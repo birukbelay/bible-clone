@@ -4,11 +4,12 @@
  */
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { getBooks, getRange, useAsync } from '@/bible/queries';
 import { decodeRanges, formatRef } from '@/bible/reference';
 import { useCurrentVersion } from '@/bible/versions';
+import { confirm, notify } from '@/components/dialogs';
 import { Icons } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Empty, Field, IconButton, Loading } from '@/components/ui';
@@ -69,17 +70,18 @@ function NoteEditor({
       () => router.back(),
       (e: Error) => {
         setSaving(false);
-        Alert.alert('Could not save', e.message);
+        notify('Could not save', e.message);
       },
     );
   };
 
   const remove = () =>
     record &&
-    Alert.alert('Delete this note?', undefined, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: () => deleteRecord(record).then(() => router.back()) },
-    ]);
+    confirm({ title: 'Delete this note?', confirmText: 'Delete', destructive: true }).then(
+      (ok) => {
+        if (ok) deleteRecord(record).then(() => router.back());
+      },
+    );
 
   return (
     <>

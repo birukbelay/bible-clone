@@ -5,10 +5,11 @@
 import { Q } from '@nozbe/watermelondb';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, Platform, StyleSheet, View } from 'react-native';
 
 import { useAsync } from '@/bible/queries';
 import { searchStrongs } from '@/bible/strongs';
+import { notify } from '@/components/dialogs';
 import { Icon, Icons } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Empty, Field, Loading, Row } from '@/components/ui';
@@ -42,7 +43,7 @@ export default function StrongsSearchScreen() {
       () => router.back(),
       (e: Error) => {
         setSaving(false);
-        Alert.alert('Could not add the words', e.message);
+        notify('Could not add the words', e.message);
       },
     );
   };
@@ -108,7 +109,7 @@ export default function StrongsSearchScreen() {
       />
       <View style={[styles.footer, { borderTopColor: theme.border }]}>
         <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
-          {picked.length ? picked.join(', ') : 'Tap to select · long-press for the definition'}
+          {picked.length ? picked.join(', ') : Platform.OS === 'web' ? 'Click to select · right-click for the definition' : 'Tap to select · long-press for the definition'}
         </ThemedText>
         <Button
           title={picked.length ? `Add ${picked.length} word${picked.length > 1 ? 's' : ''}` : 'Add'}

@@ -10,6 +10,7 @@ import { useTheme } from '@/hooks/use-theme';
 
 import { Icon, type IconName } from './icon';
 import { ThemedText } from './themed-text';
+import type { Interaction } from './ui';
 
 export function Popover({
   visible,
@@ -57,7 +58,7 @@ export function MenuItem({
     <Pressable
       onPress={onPress}
       disabled={!onPress}
-      style={({ pressed }) => [styles.item, pressed && { backgroundColor: theme.backgroundElement }]}>
+      style={({ pressed, hovered }: Interaction) => [styles.item, (pressed || hovered) && { backgroundColor: theme.backgroundElement }]}>
       {icon && <Icon name={icon} size={20} color={theme.tint} />}
       <ThemedText numberOfLines={1} style={styles.label}>
         {label}
@@ -75,11 +76,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: StyleSheet.hairlineWidth,
     paddingVertical: Spacing.one,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 10,
+    boxShadow: '0 6px 16px rgba(0, 0, 0, 0.18)',
   },
   item: {
     flexDirection: 'row',

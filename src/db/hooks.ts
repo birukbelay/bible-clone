@@ -37,13 +37,9 @@ export function useRecord<T extends Model, S extends object>(
   useEffect(() => {
     let live = true;
     let unsubscribe: (() => void) | undefined;
-    const pending = make();
-    if (!pending) {
-      setState({ value: null });
-      return;
-    }
     const gone = () => live && setState({ value: null });
-    pending.then((r) => {
+    (make() ?? Promise.resolve(null)).then((r) => {
+      if (!r) return gone();
       if (!live) return;
       const sub = r.observe().subscribe({
         next: (record) => live && setState({ value: { ...select(record), record } }),

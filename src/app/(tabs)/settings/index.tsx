@@ -3,7 +3,7 @@
  * options, and sync status.
  */
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
 import {
   cancelDownload,
@@ -14,6 +14,7 @@ import {
   useVersions,
   type CatalogEntry,
 } from '@/bible/versions';
+import { confirm, notify, showError } from '@/components/dialogs';
 import { Icon, Icons } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Field, IconButton, Row, SectionHeader, Segmented, SwitchRow } from '@/components/ui';
@@ -44,10 +45,6 @@ export default function SettingsScreen() {
   );
 }
 
-function errorAlert(title: string) {
-  return (e: unknown) => Alert.alert(title, e instanceof Error ? e.message : String(e));
-}
-
 function Versions() {
   const theme = useTheme();
   const { versions } = useVersions();
@@ -55,16 +52,17 @@ function Versions() {
   const [importing, setImporting] = useState(false);
 
   const remove = (id: string, name: string) =>
-    Alert.alert(`Remove ${name}?`, 'Your notes, highlights and tags are kept.', [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Remove', style: 'destructive', onPress: () => deleteVersion(id).catch(errorAlert('Could not remove')) },
-    ]);
+    confirm({ title: `Remove ${name}?`, message: 'Your notes, highlights and tags are kept.', confirmText: 'Remove', destructive: true }).then(
+      (ok) => {
+        if (ok) deleteVersion(id).catch(showError('Could not remove'));
+      },
+    );
 
   const importFile = () => {
     setImporting(true);
     importFromDevice()
-      .then((v) => v && Alert.alert('Installed', `${v.name} was added.`))
-      .catch(errorAlert('Could not import'))
+      .then((v) => v && notify('Installed', `${v.name} was added.`))
+      .catch(showError('Could not import'))
       .finally(() => setImporting(false));
   };
 
@@ -97,24 +95,26 @@ function Catalog() {
   const [url, setUrl] = useSetting(settings.catalogUrl);
   const [input, setInput] = useState(url);
   const [entries, setEntries] = useState<CatalogEntry[] | null>(null);
-  const [loading, setLoading] = useState(false);
+  // the saved catalog loads when the screen opens
+  const [loading, setLoading] = useState(!!url);
   const { versions, downloads } = useVersions();
 
-  const load = (from: string) => {
-    if (!from) return;
-    setLoading(true);
+  const fetchFrom = (from: string) =>
     fetchCatalog(from)
       .then(setEntries)
       .catch((e) => {
         setEntries(null);
-        errorAlert('Could not load the catalog')(e);
+        showError('Could not load the catalog')(e);
       })
       .finally(() => setLoading(false));
+  const load = (from: string) => {
+    if (!from) return;
+    setLoading(true);
+    fetchFrom(from);
   };
 
-  // show the saved catalog when the screen opens
   useEffect(() => {
-    if (url) load(url);
+    if (url) fetchFrom(url);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -127,9 +127,9 @@ function Catalog() {
 
   const download = (entry: CatalogEntry) =>
     downloadVersion(entry)
-      .then((v) => v && Alert.alert('Installed', `${v.name} was added.`))
+      .then((v) => v && notify('Installed', `${v.name} was added.`))
       .catch((e: Error) => {
-        if (e?.name !== 'AbortError') errorAlert('Download failed')(e);
+        if (e?.name !== 'AbortError') showError('Download failed')(e);
       });
 
   return (
@@ -215,7 +215,7 @@ function Appearance() {
           onChange={setTheme}
         />
         <ThemedText type="small" themeColor="textSecondary">
-          System follows your phone's light / dark mode.
+          {"System follows your device's light / dark mode."}
         </ThemedText>
       </View>
     </>
@@ -282,8 +282,8 @@ function Sync() {
           </>
         ) : (
           <ThemedText type="small" themeColor="textSecondary">
-            Bookmarks, notes, highlights, tags and topics are stored on this device only. Sync is prepared but no sync
-            service is set up yet.
+            Bookmarks, notes, highlights, tags and topics are stored {Platform.OS === 'web' ? 'in this browser' : 'on this device'}{' '}
+            only. Sync is prepared but no sync service is set up yet.
             {pending ? ' Changes made now will be uploaded when sync is turned on.' : ''}
           </ThemedText>
         )}

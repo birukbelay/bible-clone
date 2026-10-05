@@ -2,8 +2,10 @@
  * Reading queries against one Bible version DB (see versions.ts), plus a small hook to run them.
  */
 import { useEffect, useState } from 'react';
+import { Platform } from 'react-native';
 
 import { bookOf, chapterRange } from './ari';
+import { plainText } from './markup';
 import { bibleDb } from './versions';
 
 export type Book = { book: number; name: string; abbr: string; chapters: number };
@@ -98,11 +100,12 @@ export type SearchScope = 'all' | 'ot' | 'nt' | { book: number };
  * Full-text search. Words are matched as prefixes ("love" finds "loved"); "quoted text" is a phrase.
  */
 export async function searchText(versionId: string, query: string, scope: SearchScope = 'all', limit = 300) {
+  const [from, to] =
+    scope === 'all' ? [0, 0xffffff] : scope === 'ot' ? [0, 0x26ffff] : scope === 'nt' ? [0x270000, 0xffffff] : [scope.book << 16, (scope.book << 16) | 0xffff];
+  if (Platform.OS === 'web') return scanText(versionId, query, from, to, limit);
   const match = toFtsQuery(query);
   if (!match) return [];
   const db = await bibleDb(versionId);
-  const [from, to] =
-    scope === 'all' ? [0, 0xffffff] : scope === 'ot' ? [0, 0x26ffff] : scope === 'nt' ? [0x270000, 0xffffff] : [scope.book << 16, (scope.book << 16) | 0xffff];
   return db.getAllAsync<Verse>(
     `SELECT v.ari, v.ari_end, v.label, v.text, v.para
      FROM verses_fts f JOIN verses v ON v.ari = f.rowid
@@ -130,6 +133,55 @@ function toFtsQuery(input: string) {
   return parts.join(' ');
 }
 
+/** Lower case without accents, like the FTS tokenizer (unicode61 remove_diacritics). */
+const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const NOT_WORD = '[^\\p{L}\\p{N}]';
+
+/**
+ * Search without a full-text index (the browser's SQLite has no FTS5), same rules as searchText:
+ * SQLite narrows the verses down with LIKE on the longest word, the rest is matched here.
+ */
+async function scanText(versionId: string, query: string, from: number, to: number, limit: number) {
+  const tests: RegExp[] = [];
+  const words: string[] = [];
+  for (const m of query.matchAll(/"([^"]+)"|(\S+)/g)) {
+    const parts = fold(m[1] ?? m[2])
+      .split(/[^\p{L}\p{N}']+/u)
+      .map((w) => w.replace(/^'+|'+$/g, ''))
+      .filter(Boolean);
+    if (!parts.length) continue;
+    words.push(...parts);
+    // phrase: the words in a row; single word: a prefix ("love" finds "loved")
+    const body = parts.map(escapeRegex).join(`${NOT_WORD}+`);
+    tests.push(new RegExp(`(?<![\\p{L}\\p{N}])${body}${m[1] ? `(?![\\p{L}\\p{N}])` : ''}`, 'u'));
+  }
+  if (!tests.length) return [];
+  const longest = words.reduce((a, b) => (b.length > a.length ? b : a));
+  const like = `%${longest.replace(/[\\%_]/g, '\\$&')}%`;
+
+  const db = await bibleDb(versionId);
+  const results: Verse[] = [];
+  let after = from - 1;
+  while (results.length < limit) {
+    const rows = await db.getAllAsync<Verse>(
+      `SELECT ari, ari_end, label, text, para FROM verses
+       WHERE ari > ? AND ari <= ? AND text LIKE ? ESCAPE '\\' ORDER BY ari LIMIT 2000`,
+      after,
+      to,
+      like,
+    );
+    for (const v of rows) {
+      const plain = fold(plainText(v.text));
+      if (tests.every((t) => t.test(plain))) results.push(v);
+      if (results.length >= limit) break;
+    }
+    if (rows.length < 2000) break;
+    after = rows[rows.length - 1].ari;
+  }
+  return results;
+}
+
 /** Book name lookup for references ("John 3:16") in lists. */
 export function bookName(books: Book[] | undefined, ari: number, short = false) {
   const b = books?.find((x) => x.book === bookOf(ari));
@@ -140,19 +192,20 @@ export function bookName(books: Book[] | undefined, ari: number, short = false) 
  * Runs an async loader when its deps change; keeps the previous data while reloading.
  * Results of outdated calls are dropped.
  */
-export function useAsync<T>(load: () => Promise<T>, deps: readonly unknown[]) {
-  const [state, setState] = useState<{ data?: T; error?: Error; loading: boolean }>({ loading: true });
+export function useAsync<T>(load: () => Promise<T>, deps: readonly unknown[]): { data?: T; error?: Error; loading: boolean } {
+  // `deps` of the last result: loading until it matches the current ones
+  const [state, setState] = useState<{ data?: T; error?: Error; deps?: readonly unknown[] }>({});
   useEffect(() => {
     let live = true;
-    setState((s) => ({ ...s, loading: true }));
     load().then(
-      (data) => live && setState({ data, loading: false }),
-      (error: Error) => live && setState({ error, loading: false }),
+      (data) => live && setState({ data, deps }),
+      (error: Error) => live && setState({ error, deps }),
     );
     return () => {
       live = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, deps);
-  return state;
+  const loading = !state.deps || state.deps.length !== deps.length || state.deps.some((d, i) => !Object.is(d, deps[i]));
+  return { data: state.data, error: state.error, loading };
 }

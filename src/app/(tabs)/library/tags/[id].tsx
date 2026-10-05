@@ -1,8 +1,8 @@
 /** Verses with one tag. Long-press a verse to remove the tag from it. */
 import { Q } from '@nozbe/watermelondb';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
-import { Alert } from 'react-native';
 
+import { confirm } from '@/components/dialogs';
 import { Icons } from '@/components/icon';
 import { Empty, IconButton, Loading } from '@/components/ui';
 import { VerseList, type VerseListItem } from '@/components/verse-list';
@@ -53,10 +53,11 @@ export default function TagScreen() {
         onLongPress={(item) => {
           const link = byKey.get(item.key);
           if (!link) return;
-          Alert.alert(`Remove "${tag.name}" from this verse?`, undefined, [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Remove', style: 'destructive', onPress: () => deleteRecord(link) },
-          ]);
+          confirm({ title: `Remove "${tag.name}" from this verse?`, confirmText: 'Remove', destructive: true }).then(
+            (ok) => {
+              if (ok) deleteRecord(link);
+            },
+          );
         }}
       />
     </>

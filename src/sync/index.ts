@@ -11,8 +11,14 @@
  * WebDAV, ...) implements SyncBackend in src/sync/backends/ and is passed to setSyncBackend().
  * See docs/fyn-rn-data.md for the change set format.
  */
-import { hasUnsyncedChanges, synchronize, type SyncLog } from '@nozbe/watermelondb/sync';
-import type { SyncDatabaseChangeSet, SyncPullArgs, SyncPushArgs } from '@nozbe/watermelondb/sync';
+import {
+  hasUnsyncedChanges,
+  synchronize,
+  type SyncDatabaseChangeSet,
+  type SyncLog,
+  type SyncPullArgs,
+  type SyncPushArgs,
+} from '@nozbe/watermelondb/sync';
 import { useSyncExternalStore } from 'react';
 
 import { database } from '@/db';

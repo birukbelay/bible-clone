@@ -11,11 +11,9 @@ import { router, useIsFocused } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
-  Alert,
   BackHandler,
   Pressable,
   ScrollView,
-  Share,
   StyleSheet,
   Switch,
   Text,
@@ -36,14 +34,16 @@ import { adjacentChapter, encodeRanges, formatRef, selectionToRanges, type Verse
 import { useCurrentVersion, useSplitVersion, useVersions, type BibleVersion } from '@/bible/versions';
 import { BookDrawer } from '@/components/book-drawer';
 import { CHAPTER_BAR_HEIGHT, ChapterArrows, ChapterBar } from '@/components/chapter-bar';
+import { confirm, share, showError, toast } from '@/components/dialogs';
 import { Icon, Icons } from '@/components/icon';
 import { MenuItem, Popover } from '@/components/popover';
 import { ThemedText } from '@/components/themed-text';
-import { Button, Empty, IconButton, Segmented } from '@/components/ui';
+import { Button, Empty, IconButton, Segmented, type Interaction } from '@/components/ui';
 import { VerseText } from '@/components/verse-text';
 import { HighlightColors, MaxContentWidth, Spacing } from '@/constants/theme';
 import { addBookmarks, removeBookmarks, setHighlight } from '@/db/actions';
 import { marksOf, useChapterMarks, type VerseMarks } from '@/db/annotations';
+import { requestBrowserFullscreen, useBrowserFullscreen, useDocumentTitle, useReaderShortcuts } from '@/hooks/use-reader-shortcuts';
 import { useTabBottomInset } from '@/hooks/use-tab-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { settings, useSetting } from '@/settings';
@@ -51,6 +51,10 @@ import { settings, useSetting } from '@/settings';
 const HEADER_HEIGHT = 52;
 /** space between the split view's columns, where the divider is drawn */
 const GUTTER = 26;
+/** split view on wide screens (desktop browsers, tablets): wider page, columns and gutter */
+const WIDE_SPLIT = 900;
+const MAX_SPLIT_WIDTH = 1600;
+const WIDE_GUTTER = 48;
 /** auto-scroll speed at the default text size, px/s */
 const SCROLL_SPEED = 26;
 
@@ -168,6 +172,8 @@ export default function ReaderScreen() {
         scrollRef.current?.scrollTo({ y: Math.max(0, layout.y - Spacing.two), animated: false });
       }
     }
+    // only on a new chapter or jump; later row layouts are handled by onUnitLayout
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [target, data?.key, chapterAri]);
 
   const onUnitLayout = (key: string, unit: Unit, e: LayoutChangeEvent) => {
@@ -225,6 +231,7 @@ export default function ReaderScreen() {
       cancelAnimationFrame(frame);
       savePosition(y);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- savePosition reads refs and settings
   }, [playing, viewport.height]);
 
   // back leaves full screen first
@@ -235,6 +242,7 @@ export default function ReaderScreen() {
       return true;
     });
     return () => sub.remove();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- setFullscreen is a new function each render
   }, [fullscreen, focused]);
 
   const prev = adjacentChapter(books, chapterAri, -1);
@@ -242,6 +250,28 @@ export default function ReaderScreen() {
   const go = (ari: number | null) => {
     if (ari != null) settings.position.set(ari);
   };
+  const enterFullscreen = () => {
+    requestBrowserFullscreen();
+    setFullscreen(true);
+  };
+
+  // web: keyboard, and the browser's own full screen
+  useBrowserFullscreen(fullscreen, () => setFullscreen(false));
+  useReaderShortcuts({
+    enabled: focused && !drawer,
+    onPrev: () => go(prev),
+    onNext: () => go(next),
+    onToggleFullscreen: () => (fullscreen ? setFullscreen(false) : enterFullscreen()),
+    onEscape: () => {
+      if (menu) setMenu(null);
+      else if (selected.size) clearSelection();
+      else if (fullscreen) setFullscreen(false);
+    },
+  });
+  const book = books?.find((b) => b.book === bookOf(chapterAri));
+  const bookTitle = book?.name ?? '';
+  const chapter = chapterOf(chapterAri);
+  useDocumentTitle(focused && book && version ? `${bookTitle} ${chapter} (${version.shortName}) · Fyn Bible` : null);
 
   if (!version) {
     return (
@@ -253,25 +283,25 @@ export default function ReaderScreen() {
     );
   }
 
-  const book = books?.find((b) => b.book === bookOf(chapterAri));
-  const bookTitle = book?.name ?? '';
-  const chapter = chapterOf(chapterAri);
-  const verseFont = split ? Math.max(12, fontSize - 3) : fontSize;
-
-  // split view geometry: rows are laid out in pixels so the divider overlay lines up with them
-  const contentWidth = Math.min(viewport.width, MaxContentWidth);
-  const padding = split ? Spacing.two + 2 : Spacing.three;
+  // split view geometry: rows are laid out in pixels so the divider overlay lines up with them.
+  // Two columns get about twice the single column's width (desktop browsers, tablets).
+  const wide = viewport.width >= WIDE_SPLIT;
+  const maxWidth = split ? MAX_SPLIT_WIDTH : MaxContentWidth;
+  const contentWidth = Math.min(viewport.width, maxWidth);
+  const padding = split ? (wide ? Spacing.four : Spacing.two + 2) : Spacing.three;
+  const gutter = split && wide ? WIDE_GUTTER : GUTTER;
   const sideInset = Math.max(insets.left, insets.right);
-  const usable = Math.max(0, contentWidth - 2 * (padding + sideInset) - GUTTER);
+  const usable = Math.max(0, contentWidth - 2 * (padding + sideInset) - gutter);
   const leftWidth = Math.round(usable * ratio);
-  const dividerX = (viewport.width - contentWidth) / 2 + padding + sideInset + leftWidth + GUTTER / 2;
+  const dividerX = (viewport.width - contentWidth) / 2 + padding + sideInset + leftWidth + gutter / 2;
+  // smaller text only when the columns are narrow (phones)
+  const verseFont = split && Math.min(leftWidth, usable - leftWidth) < 360 ? Math.max(12, fontSize - 3) : fontSize;
 
   const toggleSplit = () => {
     if (versions.length < 2) {
-      Alert.alert('Split view needs two versions', 'Add another version in Settings.', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Settings', onPress: () => router.navigate('/settings') },
-      ]);
+      confirm({ title: 'Split view needs two versions', message: 'Add another version in Settings.', confirmText: 'Settings' }).then((ok) => {
+        if (ok) router.navigate('/settings');
+      });
       return;
     }
     setSplitOn(!splitOn);
@@ -299,9 +329,10 @@ export default function ReaderScreen() {
           <Pressable
             onPress={() => router.push('/version-picker')}
             accessibilityLabel="Change version"
-            style={({ pressed }) => [
+            style={({ pressed, hovered }: Interaction) => [
               styles.tab,
               { backgroundColor: theme.tint },
+              hovered && styles.hovered,
               pressed && styles.pressed,
             ]}>
             <Text numberOfLines={1} style={styles.tabVersion}>
@@ -319,7 +350,7 @@ export default function ReaderScreen() {
               color={splitOn ? theme.tint : theme.textSecondary}
               onPress={toggleSplit}
             />
-            <IconButton icon={Icons.fullscreen} label="Full screen" color={theme.textSecondary} onPress={() => setFullscreen(true)} />
+            <IconButton icon={Icons.fullscreen} label="Full screen" color={theme.textSecondary} onPress={enterFullscreen} />
             <IconButton icon={Icons.moreVertical} label="More" color={theme.textSecondary} onPress={() => setMenu('more')} />
           </View>
         </View>
@@ -332,6 +363,7 @@ export default function ReaderScreen() {
           contentContainerStyle={[
             styles.content,
             {
+              maxWidth,
               paddingHorizontal: padding + sideInset,
               paddingTop: (fullscreen ? insets.top : 0) + Spacing.three,
               paddingBottom: bottomInset + CHAPTER_BAR_HEIGHT + (selected.size ? 200 : Spacing.five),
@@ -375,7 +407,7 @@ export default function ReaderScreen() {
                     isSelected && { backgroundColor: theme.backgroundSelected, borderLeftColor: theme.tint },
                   ]}>
                   {split ? (
-                    <View style={styles.splitColumns}>
+                    <View style={[styles.splitColumns, { gap: gutter }]}>
                       <View style={{ width: leftWidth }}>
                         {mainColumn}
                         <Marks marks={unitMarks} />
@@ -451,7 +483,7 @@ export default function ReaderScreen() {
       </View>
 
       <Popover visible={menu === 'more'} onClose={() => setMenu(null)} style={[styles.morePopover, { top: insets.top + HEADER_HEIGHT - Spacing.one }]}>
-        <MoreMenu split={split} onClose={() => setMenu(null)} onFullscreen={() => setFullscreen(true)} />
+        <MoreMenu split={split} onClose={() => setMenu(null)} onFullscreen={enterFullscreen} />
       </Popover>
 
       <BookDrawer
@@ -566,15 +598,16 @@ function SplitDivider({
       style={[styles.sideLabel, { top: top + LABEL_LENGTH / 2 - 12 }]}>
       <View style={[styles.sideLabelChip, { backgroundColor: theme.background, borderColor: theme.border }]}>
         <Text numberOfLines={1} style={[styles.sideLabelText, { color }]}>
-          {version.shortName} ▾
+          {/* the label is turned -90°: ▴ ends up pointing left, ▾ right, towards the version's column */}
+          {version.shortName} {slot ? '▾' : '▴'}
         </Text>
       </View>
     </Pressable>
   );
 
   return (
-    <Animated.View pointerEvents="box-none" style={[styles.divider, { left: x - GUTTER / 2, height }, lineStyle]}>
-      <View pointerEvents="none" style={[styles.dividerLine, { backgroundColor: theme.border }]} />
+    <Animated.View style={[styles.divider, { left: x - GUTTER / 2, height }, lineStyle]}>
+      <View style={[styles.dividerLine, { backgroundColor: theme.border }]} />
       {label(left, theme.tint, Spacing.three)}
       {label(right, theme.splitTint, Spacing.three + LABEL_LENGTH + Spacing.two, 'split')}
       <GestureDetector gesture={pan}>
@@ -692,7 +725,7 @@ function SelectionBar({
   const run = (fn: () => Promise<unknown>, done = true) =>
     fn().then(
       () => done && onDone(),
-      (e: Error) => Alert.alert('Something went wrong', e.message),
+      showError('Something went wrong'),
     );
 
   return (
@@ -744,9 +777,9 @@ function SelectionBar({
         <Action
           icon={Icons.copy}
           label="Copy"
-          onPress={() => run(async () => Clipboard.setStringAsync(await text()))}
+          onPress={() => run(async () => Clipboard.setStringAsync(await text()).then(() => toast('Copied')))}
         />
-        <Action icon={Icons.share} label="Share" onPress={() => run(async () => Share.share({ message: await text() }))} />
+        <Action icon={Icons.share} label="Share" onPress={() => run(async () => share(await text()))} />
         {single && (
           <Action
             icon={Icons.study}
@@ -765,7 +798,13 @@ function SelectionBar({
 function Action({ icon, label, onPress }: { icon: (typeof Icons)[keyof typeof Icons]; label: string; onPress: () => void }) {
   const theme = useTheme();
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.action, pressed && { opacity: 0.5 }]}>
+    <Pressable
+      onPress={onPress}
+      style={({ pressed, hovered }: Interaction) => [
+        styles.action,
+        hovered && { backgroundColor: theme.backgroundSelected },
+        pressed && { opacity: 0.5 },
+      ]}>
       <Icon name={icon} size={22} color={theme.tint} />
       <ThemedText type="small" style={styles.actionLabel}>
         {label}
@@ -777,6 +816,7 @@ function Action({ icon, label, onPress }: { icon: (typeof Icons)[keyof typeof Ic
 const styles = StyleSheet.create({
   fill: { flex: 1 },
   pressed: { opacity: 0.6 },
+  hovered: { opacity: 0.9 },
   header: {
     zIndex: 2,
     flexDirection: 'row',
@@ -796,11 +836,7 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 12,
     borderBottomRightRadius: 12,
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 4,
+    boxShadow: '0 3px 6px rgba(0, 0, 0, 0.2)',
   },
   tabVersion: { color: '#ffffff', fontSize: 14, lineHeight: 17, fontWeight: '800', letterSpacing: 0.3 },
   tabPassage: { color: 'rgba(255,255,255,0.88)', fontSize: 11, lineHeight: 14 },
@@ -820,8 +856,8 @@ const styles = StyleSheet.create({
   marks: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: 2 },
   tagDot: { width: 8, height: 8, borderRadius: 4 },
   footnote: { paddingHorizontal: Spacing.two, fontStyle: 'italic' },
-  divider: { position: 'absolute', top: 0, width: GUTTER, alignItems: 'center' },
-  dividerLine: { position: 'absolute', top: 0, bottom: 0, left: GUTTER / 2, width: StyleSheet.hairlineWidth },
+  divider: { position: 'absolute', top: 0, width: GUTTER, alignItems: 'center', pointerEvents: 'box-none' },
+  dividerLine: { position: 'absolute', top: 0, bottom: 0, left: GUTTER / 2, width: StyleSheet.hairlineWidth, pointerEvents: 'none' },
   // rotated labels: laid out horizontally (LABEL_LENGTH wide) then turned to run along the line
   sideLabel: {
     position: 'absolute',
@@ -857,17 +893,13 @@ const styles = StyleSheet.create({
     gap: Spacing.two,
     maxWidth: MaxContentWidth,
     alignSelf: 'center',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
   },
   barHeader: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two },
   colors: { flexDirection: 'row', gap: Spacing.two },
   swatch: { width: 30, height: 30, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth },
   swatchClear: { alignItems: 'center', justifyContent: 'center' },
   actions: { flexDirection: 'row', justifyContent: 'space-between' },
-  action: { alignItems: 'center', gap: 2, minWidth: 48 },
+  action: { alignItems: 'center', gap: 2, minWidth: 48, paddingVertical: Spacing.one, borderRadius: 10 },
   actionLabel: { fontSize: 11, lineHeight: 14 },
 });

@@ -6,7 +6,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 
 import { Icons } from './icon';
-import { IconButton } from './ui';
+import { IconButton, type Interaction } from './ui';
 
 export const CHAPTER_BAR_HEIGHT = 60;
 
@@ -54,7 +54,7 @@ export function ChapterBar({
       />
       <View style={[styles.separator, { backgroundColor: theme.border }]} />
       <IconButton icon={Icons.left} label="Previous chapter" size={26} disabled={!onPrev} onPress={() => onPrev?.()} />
-      <Pressable onPress={onTitle} style={({ pressed }) => [styles.title, pressed && styles.pressed]} accessibilityLabel="Books and chapters">
+      <Pressable onPress={onTitle} style={({ pressed, hovered }: Interaction) => [styles.title, hovered && { backgroundColor: theme.backgroundElement }, pressed && styles.pressed]} accessibilityLabel="Books and chapters">
         <Text numberOfLines={1} style={[styles.book, { color: theme.text }]}>
           {book}
         </Text>
@@ -99,11 +99,7 @@ const styles = StyleSheet.create({
     borderRadius: 24,
     borderWidth: StyleSheet.hairlineWidth,
     opacity: 0.92,
-    shadowColor: '#000',
-    shadowOpacity: 0.14,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 6,
+    boxShadow: '0 3px 10px rgba(0, 0, 0, 0.14)',
   },
   bar: {
     position: 'absolute',
@@ -114,14 +110,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.two,
     borderRadius: 20,
     borderWidth: StyleSheet.hairlineWidth,
-    shadowColor: '#000',
-    shadowOpacity: 0.14,
-    shadowRadius: 14,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 8,
+    boxShadow: '0 4px 14px rgba(0, 0, 0, 0.14)',
   },
   separator: { width: StyleSheet.hairlineWidth, height: 28, marginHorizontal: Spacing.one },
-  title: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  title: { flex: 1, alignSelf: 'stretch', marginVertical: Spacing.one, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
   book: { fontSize: 16, fontWeight: '700' },
   chapter: { fontSize: 12, marginTop: 1 },
   pressed: { opacity: 0.55 },

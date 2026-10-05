@@ -2,6 +2,7 @@
 import type { ReactNode } from 'react';
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Switch,
@@ -18,6 +19,19 @@ import { useTheme } from '@/hooks/use-theme';
 
 import { Icon, type IconName } from './icon';
 import { ThemedText } from './themed-text';
+
+/** Pressable state. `hovered` (mouse over) comes from react-native-web; the RN typings lack it. */
+export type Interaction = { pressed: boolean; hovered?: boolean };
+
+/** Pressable props for a long press; in browsers a right click does the same. */
+export function longPress(onLongPress: (() => void) | undefined): Partial<PressableProps> {
+  if (!onLongPress || Platform.OS !== 'web') return { onLongPress };
+  const onContextMenu = (e: { preventDefault: () => void }) => {
+    e.preventDefault();
+    onLongPress();
+  };
+  return { onLongPress, onContextMenu } as Partial<PressableProps>;
+}
 
 export function Button({
   title,
@@ -40,9 +54,10 @@ export function Button({
     <Pressable
       onPress={onPress}
       disabled={disabled}
-      style={({ pressed }) => [
+      style={({ pressed, hovered }: Interaction) => [
         styles.button,
         { backgroundColor: kind === 'primary' ? theme.tint : theme.backgroundElement },
+        hovered && styles.hovered,
         (pressed || disabled) && styles.dimmed,
         style,
       ]}>
@@ -69,13 +84,18 @@ export function IconButton({
   label: string;
   disabled?: boolean;
 }) {
+  const theme = useTheme();
   return (
     <Pressable
       onPress={onPress}
       disabled={disabled}
       accessibilityLabel={label}
       hitSlop={8}
-      style={({ pressed }) => [styles.iconButton, (pressed || disabled) && styles.dimmed]}>
+      style={({ pressed, hovered }: Interaction) => [
+        styles.iconButton,
+        hovered && !disabled && { backgroundColor: theme.backgroundElement },
+        (pressed || disabled) && styles.dimmed,
+      ]}>
       <Icon name={icon} size={size} color={color} />
     </Pressable>
   );
@@ -97,16 +117,20 @@ export function Row({
   left?: ReactNode;
   right?: ReactNode;
   onPress?: PressableProps['onPress'];
-  onLongPress?: PressableProps['onLongPress'];
+  onLongPress?: () => void;
   chevron?: boolean;
 }) {
   const theme = useTheme();
   return (
     <Pressable
       onPress={onPress}
-      onLongPress={onLongPress}
+      {...longPress(onLongPress)}
       disabled={!onPress && !onLongPress}
-      style={({ pressed }) => [styles.row, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.backgroundElement }]}>
+      style={({ pressed, hovered }: Interaction) => [
+        styles.row,
+        { borderBottomColor: theme.border },
+        (pressed || hovered) && { backgroundColor: theme.backgroundElement },
+      ]}>
       {left}
       <View style={styles.rowBody}>
         {typeof title === 'string' ? <ThemedText numberOfLines={2}>{title}</ThemedText> : title}
@@ -201,10 +225,10 @@ export function Chip({
   return (
     <Pressable
       onPress={onPress}
-      onLongPress={onLongPress}
-      style={({ pressed }) => [
+      {...longPress(onLongPress)}
+      style={({ pressed, hovered }: Interaction) => [
         styles.chip,
-        { backgroundColor: selected ? (color ?? theme.tint) : theme.backgroundElement },
+        { backgroundColor: selected ? (color ?? theme.tint) : hovered ? theme.backgroundSelected : theme.backgroundElement },
         pressed && styles.dimmed,
       ]}>
       {color && !selected && <View style={[styles.dot, { backgroundColor: color }]} />}
@@ -245,7 +269,8 @@ export const styles = StyleSheet.create({
     borderRadius: 12,
   },
   dimmed: { opacity: 0.55 },
-  iconButton: { padding: Spacing.one, alignItems: 'center', justifyContent: 'center' },
+  hovered: { opacity: 0.88 },
+  iconButton: { padding: Spacing.one, alignItems: 'center', justifyContent: 'center', borderRadius: 999 },
   row: {
     flexDirection: 'row',
     alignItems: 'center',

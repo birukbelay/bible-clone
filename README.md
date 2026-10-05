@@ -32,6 +32,36 @@ python3 ../tools/build_bible_db.py free .
 
 Each version adds about 5-8 MB to the app. Rebuild the app afterwards (`bunx expo run:android`).
 
+## Web & Vercel
+
+The same app runs in the browser (react-native-web). Everything is served from your own
+deployment: no CDN, web fonts or analytics.
+
+- Bible versions and Strong's are copied from `assets/db/` to `public/bibles/` gzipped
+  (`scripts/build-web-dbs.mjs`, about 1.7-2.5 MB per version, 4.3 MB for Strong's) and
+  downloaded only when first opened, then kept in the browser.
+- Notes, tags, highlights, bookmarks and downloaded / imported versions stay in the browser
+  (IndexedDB). Clearing the site data removes them.
+- It needs `https` or `localhost` (SQLite runs in a web worker with WebAssembly).
+- Search uses plain matching instead of SQLite's full-text index, so it is slower than on phones.
+- On wide windows the tabs become a rail on the left. Keyboard: `←` / `→` previous / next chapter,
+  `F` full screen, `Esc` closes menus, clears the selection or leaves full screen. Right-click
+  does what a long press does on phones (e.g. delete a bookmark).
+
+Run locally:
+
+```bash
+bun run web                              # dev server
+bun run build:web                        # production build into dist/
+node scripts/serve-web.mjs dist 8081     # serve dist/ with the headers vercel.json sets
+```
+
+Deploy on Vercel: push the repository (with `assets/db/*.db`) to GitHub, import it at
+vercel.com/new and set **Root Directory** to `fyn-rn`. `vercel.json` does the rest: it installs
+with bun, builds the web databases, exports to `dist/`, rewrites every path to `index.html` and
+sets the cross-origin isolation headers (COOP / COEP) SQLite needs plus long-term caching for
+hashed files. Or from this folder with the Vercel CLI: `bunx vercel` (preview) / `bunx vercel --prod`.
+
 ## Layout
 
 ```

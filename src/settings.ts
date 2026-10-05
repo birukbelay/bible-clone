@@ -1,9 +1,11 @@
 /**
  * Device-local preferences (not synced): current version, reading position, display options.
- * Stored in expo-sqlite's key-value store; synced user data lives in WatermelonDB (src/db).
+ * Stored in expo-sqlite's key-value store (localStorage on the web, see src/kv.web.ts);
+ * synced user data lives in WatermelonDB (src/db).
  */
-import Storage from 'expo-sqlite/kv-store';
 import { useSyncExternalStore } from 'react';
+
+import { kv } from '@/kv';
 
 export type Setting<T> = {
   get(): T;
@@ -16,7 +18,7 @@ function createSetting<T>(key: string, fallback: T): Setting<T> {
   const listeners = new Set<() => void>();
   let value = fallback;
   try {
-    const raw = Storage.getItemSync(key);
+    const raw = kv.get(key);
     if (raw != null) value = JSON.parse(raw) as T;
   } catch {
     value = fallback;
@@ -25,7 +27,7 @@ function createSetting<T>(key: string, fallback: T): Setting<T> {
     get: () => value,
     set(next, notify = true) {
       value = next;
-      Storage.setItemSync(key, JSON.stringify(next));
+      kv.set(key, JSON.stringify(next));
       if (notify) listeners.forEach((l) => l());
     },
     subscribe(listener) {

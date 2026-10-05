@@ -1,21 +1,31 @@
-import { useEffect, useState } from 'react';
-import { useColorScheme as useRNColorScheme } from 'react-native';
+import { useEffect, useSyncExternalStore } from 'react';
+import { useColorScheme as useSystemColorScheme } from 'react-native';
+
+import { settings, useSetting } from '@/settings';
+
+const noSubscription = () => () => {};
 
 /**
- * To support static rendering, this value needs to be re-calculated on the client side for web
+ * The theme chosen in Settings, else the browser's. (react-native-web cannot override the
+ * system scheme like Appearance.setColorScheme does on the phone.) Static rendering has no
+ * settings or media queries, so the page starts light and switches after hydration.
  */
 export function useColorScheme() {
-  const [hasHydrated, setHasHydrated] = useState(false);
+  // false while hydrating the static page, true afterwards
+  const hasHydrated = useSyncExternalStore(
+    noSubscription,
+    () => true,
+    () => false,
+  );
+  const [theme] = useSetting(settings.theme);
+  const system = useSystemColorScheme();
 
+  const scheme = theme === 'system' ? system : theme;
+
+  // native form controls and scrollbars follow the page
   useEffect(() => {
-    setHasHydrated(true);
-  }, []);
+    if (hasHydrated) document.documentElement.style.colorScheme = scheme === 'dark' ? 'dark' : 'light';
+  }, [hasHydrated, scheme]);
 
-  const colorScheme = useRNColorScheme();
-
-  if (hasHydrated) {
-    return colorScheme;
-  }
-
-  return 'light';
+  return hasHydrated ? scheme : 'light';
 }

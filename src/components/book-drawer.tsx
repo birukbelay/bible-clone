@@ -6,7 +6,7 @@
 import * as Clipboard from 'expo-clipboard';
 import { router, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
-import { FlatList, Modal, Pressable, Share, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { FlatList, Modal, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { Gesture, GestureDetector, GestureHandlerRootView } from 'react-native-gesture-handler';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -21,8 +21,10 @@ import { Fonts, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { settings } from '@/settings';
 
+import { share, showError, toast } from './dialogs';
 import { Icon, Icons, type IconName } from './icon';
 import { ThemedText } from './themed-text';
+import type { Interaction } from './ui';
 
 const BOOK_ROW = 52;
 const CHAPTER_ROW = 48;
@@ -172,7 +174,11 @@ function DrawerContent({
           <Pressable
             key={s.label}
             onPress={() => navigate(s.href)}
-            style={({ pressed }) => [styles.shortcut, pressed && styles.pressed]}>
+            style={({ pressed, hovered }: Interaction) => [
+              styles.shortcut,
+              hovered && { backgroundColor: theme.backgroundElement },
+              pressed && styles.pressed,
+            ]}>
             <Icon name={s.icon} size={22} color={theme.tint} />
             <ThemedText type="small" numberOfLines={1} style={styles.shortcutLabel}>
               {s.label}
@@ -194,9 +200,10 @@ function DrawerContent({
             return (
               <Pressable
                 onPress={() => setBrowsed(item.book)}
-                style={[
+                style={({ hovered }: Interaction) => [
                   styles.bookRow,
                   { borderBottomColor: theme.border },
+                  hovered && { backgroundColor: theme.backgroundElement },
                   active && { backgroundColor: theme.tintSoft, borderLeftColor: theme.tint },
                 ]}>
                 <ThemedText
@@ -226,9 +233,11 @@ function DrawerContent({
                 onPress={() => go(item)}
                 accessibilityLabel={`Chapter ${item}`}
                 style={({ pressed }) => [styles.chapter, pressed && styles.pressed]}>
-                <View style={[styles.chapterCell, here && { backgroundColor: theme.tint }]}>
+                {({ hovered }: Interaction) => (
+                <View style={[styles.chapterCell, hovered && { backgroundColor: theme.backgroundSelected }, here && { backgroundColor: theme.tint }]}>
                   <Text style={[styles.chapterText, { color: here ? '#ffffff' : theme.text }, here && styles.bold]}>{item}</Text>
                 </View>
+                )}
               </Pressable>
             );
           }}
@@ -297,8 +306,8 @@ function VerseOfDay({
             router.push({ pathname: '/note', params: { ranges: encodeRanges([{ ari, ariEnd: ari }]), version: versionId } });
           }}
         />
-        <VotdAction icon={Icons.copy} label="Copy" onPress={() => Clipboard.setStringAsync(message)} />
-        <VotdAction icon={Icons.share} label="Share" onPress={() => Share.share({ message })} />
+        <VotdAction icon={Icons.copy} label="Copy" onPress={() => Clipboard.setStringAsync(message).then(() => toast('Copied'))} />
+        <VotdAction icon={Icons.share} label="Share" onPress={() => share(message).catch(showError('Could not share'))} />
       </View>
     </View>
   );
@@ -306,7 +315,7 @@ function VerseOfDay({
 
 function VotdAction({ icon, label, onPress }: { icon: IconName; label: string; onPress: () => void }) {
   return (
-    <Pressable onPress={onPress} accessibilityLabel={label} hitSlop={6} style={({ pressed }) => [styles.votdAction, pressed && styles.pressed]}>
+    <Pressable onPress={onPress} accessibilityLabel={label} hitSlop={6} style={({ pressed, hovered }: Interaction) => [styles.votdAction, hovered && styles.votdActionHovered, pressed && styles.pressed]}>
       <Icon name={icon} size={18} color="#ffffff" />
     </Pressable>
   );
@@ -322,10 +331,7 @@ const styles = StyleSheet.create({
     top: 0,
     bottom: 0,
     left: 0,
-    shadowColor: '#000',
-    shadowOpacity: 0.25,
-    shadowRadius: 16,
-    elevation: 16,
+    boxShadow: '0 0 16px rgba(0, 0, 0, 0.25)',
   },
   votd: {
     paddingHorizontal: Spacing.three,
@@ -346,13 +352,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: 'rgba(255,255,255,0.18)',
   },
+  votdActionHovered: { backgroundColor: 'rgba(255,255,255,0.3)' },
   shortcuts: {
     flexDirection: 'row',
     paddingVertical: Spacing.two + 2,
     paddingHorizontal: Spacing.one,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  shortcut: { flex: 1, alignItems: 'center', gap: Spacing.one },
+  shortcut: { flex: 1, alignItems: 'center', gap: Spacing.one, paddingVertical: Spacing.one, borderRadius: 10 },
   shortcutLabel: { fontSize: 11, lineHeight: 14 },
   lists: { flex: 1, flexDirection: 'row' },
   bookRow: {

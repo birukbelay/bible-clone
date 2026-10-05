@@ -2,8 +2,9 @@
 import { Q } from '@nozbe/watermelondb';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { useState, type ReactElement } from 'react';
-import { Alert, FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, StyleSheet, View } from 'react-native';
 
+import { confirm } from '@/components/dialogs';
 import { Icons } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Empty, IconButton, Row, Segmented } from '@/components/ui';
@@ -63,10 +64,9 @@ type SectionProps = { header: ReactElement; bottomInset: number };
 const recentFirst = Q.sortBy('created_at', Q.desc);
 
 function confirmDelete(what: string, onDelete: () => void) {
-  Alert.alert(`Delete ${what}?`, undefined, [
-    { text: 'Cancel', style: 'cancel' },
-    { text: 'Delete', style: 'destructive', onPress: onDelete },
-  ]);
+  confirm({ title: `Delete ${what}?`, confirmText: 'Delete', destructive: true }).then((ok) => {
+    if (ok) onDelete();
+  });
 }
 
 function Bookmarks({ header, bottomInset }: SectionProps) {

@@ -22,8 +22,13 @@
       "package": "com.fynsystems.bible.rn"
     },
     "web": {
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "output": "single",
+      "favicon": "./assets/images/favicon.png",
+      "name": "Fyn Bible",
+      "shortName": "Fyn Bible",
+      "description": "Read the Bible: several versions, Strong's, notes, tags and highlights.",
+      "themeColor": "#208AEF",
+      "backgroundColor": "#ffffff"
     },
     "plugins": [
       "expo-router",

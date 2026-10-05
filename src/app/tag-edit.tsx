@@ -1,8 +1,9 @@
 /** Create a tag, or rename/recolor/delete one (?id=). */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, Pressable, ScrollView, StyleSheet, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
+import { confirm, notify } from '@/components/dialogs';
 import { Icon, Icons } from '@/components/icon';
 import { Button, Empty, Field, Loading } from '@/components/ui';
 import { Spacing, TagColors } from '@/constants/theme';
@@ -27,21 +28,21 @@ function TagForm({ record, initialName, initialColor }: { record: Tag | null; in
   const theme = useTheme();
   const [name, setName] = useState(initialName);
   const [color, setColor] = useState<string>(initialColor ?? TagColors[0]);
-  const fail = (e: Error) => Alert.alert('Could not save the tag', e.message);
+  const fail = (e: Error) => notify('Could not save the tag', e.message);
 
   const save = () =>
     (record ? updateTag(record, name, color) : createTag(name, color)).then(() => router.back(), fail);
 
   const remove = () =>
     record &&
-    Alert.alert(`Delete “${record.name}”?`, 'The tag is removed from every verse.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteTag(record).then(() => router.dismissTo('/library'), fail),
-      },
-    ]);
+    confirm({
+      title: `Delete “${record.name}”?`,
+      message: 'The tag is removed from every verse.',
+      confirmText: 'Delete',
+      destructive: true,
+    }).then((ok) => {
+      if (ok) deleteTag(record).then(() => router.dismissTo('/library'), fail);
+    });
 
   return (
     <ScrollView

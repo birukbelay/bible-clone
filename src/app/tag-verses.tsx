@@ -2,11 +2,12 @@
 import { Q } from '@nozbe/watermelondb';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
 import { getBooks, useAsync } from '@/bible/queries';
 import { decodeRanges, formatRef } from '@/bible/reference';
 import { useCurrentVersion } from '@/bible/versions';
+import { notify } from '@/components/dialogs';
 import { Icon, Icons } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Empty, Field, Row } from '@/components/ui';
@@ -35,7 +36,7 @@ export default function TagVersesScreen() {
 
   const tagged = new Set(links?.map((l) => l.tagId));
   const tags = tagRecords?.map((t) => ({ id: t.id, name: t.name, color: t.color }));
-  const fail = (e: Error) => Alert.alert('Could not update tags', e.message);
+  const fail = (e: Error) => notify('Could not update tags', e.message);
 
   const toggle = (id: string) => (tagged.has(id) ? untagVerses(id, ranges) : tagVerses(id, ranges)).catch(fail);
 

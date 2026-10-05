@@ -13,7 +13,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { settings, useSetting } from '@/settings';
 
 import { ThemedText } from './themed-text';
-import { Empty } from './ui';
+import { Empty, longPress, type Interaction } from './ui';
 import { VerseText } from './verse-text';
 
 const PAGE = 60;
@@ -74,7 +74,7 @@ export function VerseList({
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{ paddingBottom: bottomInset }}
       ListHeaderComponent={header}
-      ListEmptyComponent={items ? <>{empty ?? <Empty title="No verses" />}</> : null}
+      ListEmptyComponent={items ? <View>{empty ?? <Empty title="No verses" />}</View> : null}
       onEndReachedThreshold={0.6}
       onEndReached={() => items && limit < items.length && setLimit(limit + PAGE)}
       renderItem={({ item }) => {
@@ -82,8 +82,12 @@ export function VerseList({
         return (
           <Pressable
             onPress={() => openInReader(item.ari)}
-            onLongPress={onLongPress ? () => onLongPress(item) : undefined}
-            style={({ pressed }) => [styles.item, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.backgroundElement }]}>
+            {...longPress(onLongPress ? () => onLongPress(item) : undefined)}
+            style={({ pressed, hovered }: Interaction) => [
+              styles.item,
+              { borderBottomColor: theme.border },
+              (pressed || hovered) && { backgroundColor: theme.backgroundElement },
+            ]}>
             <ThemedText type="smallBold" themeColor="tint">
               {formatRef(books, item.ari, item.ariEnd)}
             </ThemedText>

@@ -2,8 +2,9 @@
 import { Q } from '@nozbe/watermelondb';
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 
+import { notify } from '@/components/dialogs';
 import { Icon, Icons } from '@/components/icon';
 import { ThemedText } from '@/components/themed-text';
 import { Button, Field, Row } from '@/components/ui';
@@ -26,7 +27,7 @@ export default function TopicPickerScreen() {
   );
   const containing = new Set(words?.map((w) => w.topicId));
   const topics = topicRecords?.map((t) => ({ id: t.id, name: t.name }));
-  const fail = (e: Error) => Alert.alert('Could not update the topic', e.message);
+  const fail = (e: Error) => notify('Could not update the topic', e.message);
 
   const add = (id: string) => addTopicStrongs(id, strongs).then(() => router.back(), fail);
   const create = () => createTopic(name, strongs).then(() => router.back(), fail);

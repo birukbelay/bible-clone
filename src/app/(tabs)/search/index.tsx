@@ -1,13 +1,13 @@
 /** Search: full-text search of the current version, or the Strong's dictionary. */
 import { router, Stack } from 'expo-router';
 import { useState } from 'react';
-import { FlatList, StyleSheet, View } from 'react-native';
+import { FlatList, Platform, StyleSheet, View } from 'react-native';
 
 import { searchText, useAsync, type SearchScope } from '@/bible/queries';
 import { searchStrongs } from '@/bible/strongs';
 import { useCurrentVersion } from '@/bible/versions';
 import { ThemedText } from '@/components/themed-text';
-import { Empty, Row, Segmented } from '@/components/ui';
+import { Empty, Field, Row, Segmented } from '@/components/ui';
 import { VerseList, VerseListHeader, type VerseListItem } from '@/components/verse-list';
 import { Spacing } from '@/constants/theme';
 import { useDebounced } from '@/hooks/use-debounced';
@@ -18,6 +18,8 @@ type Mode = 'text' | 'strongs';
 type Scope = 'all' | 'ot' | 'nt';
 
 const LIMIT = 500;
+/** browsers get a plain field: their header search bar hides behind a button */
+const NATIVE_SEARCH_BAR = Platform.OS !== 'web';
 
 export default function SearchScreen() {
   const theme = useTheme();
@@ -40,8 +42,21 @@ export default function SearchScreen() {
     [mode, query],
   );
 
+  const placeholder = mode === 'text' ? `Search ${version?.shortName ?? ''}` : 'Word, G4678, H2451…';
   const controls = (
     <View style={styles.controls}>
+      {!NATIVE_SEARCH_BAR && (
+        <Field
+          value={input}
+          onChangeText={setInput}
+          placeholder={placeholder}
+          autoFocus
+          autoCapitalize="none"
+          autoCorrect={false}
+          inputMode="search"
+          aria-label="Search"
+        />
+      )}
       <Segmented<Mode>
         options={[
           { value: 'text', label: 'Bible text' },
@@ -68,12 +83,14 @@ export default function SearchScreen() {
     <>
       <Stack.Screen
         options={{
-          headerSearchBarOptions: {
-            placeholder: mode === 'text' ? `Search ${version?.shortName ?? ''}` : 'Word, G4678, H2451…',
-            autoCapitalize: 'none',
-            hideWhenScrolling: false,
-            onChangeText: (e) => setInput(e.nativeEvent.text),
-          },
+          headerSearchBarOptions: NATIVE_SEARCH_BAR
+            ? {
+                placeholder,
+                autoCapitalize: 'none',
+                hideWhenScrolling: false,
+                onChangeText: (e) => setInput(e.nativeEvent.text),
+              }
+            : undefined,
         }}
       />
       {mode === 'text' ? (

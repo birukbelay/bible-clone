@@ -1,8 +1,9 @@
 /** Create a topic (then pick its Strong's words), or rename/describe/delete one (?id=). */
 import { router, useLocalSearchParams } from 'expo-router';
 import { useState } from 'react';
-import { Alert, ScrollView, StyleSheet } from 'react-native';
+import { ScrollView, StyleSheet } from 'react-native';
 
+import { confirm, notify } from '@/components/dialogs';
 import { ThemedText } from '@/components/themed-text';
 import { Icons } from '@/components/icon';
 import { Button, Empty, Field, Loading } from '@/components/ui';
@@ -43,7 +44,7 @@ function TopicForm({
   const theme = useTheme();
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
-  const fail = (e: Error) => Alert.alert('Could not save the topic', e.message);
+  const fail = (e: Error) => notify('Could not save the topic', e.message);
 
   const save = async () => {
     try {
@@ -64,14 +65,14 @@ function TopicForm({
 
   const remove = () =>
     record &&
-    Alert.alert(`Delete “${record.name}”?`, 'Only the topic is deleted; the dictionary is not changed.', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => deleteTopic(record).then(() => router.dismissTo('/topics'), fail),
-      },
-    ]);
+    confirm({
+      title: `Delete “${record.name}”?`,
+      message: 'Only the topic is deleted; the dictionary is not changed.',
+      confirmText: 'Delete',
+      destructive: true,
+    }).then((ok) => {
+      if (ok) deleteTopic(record).then(() => router.dismissTo('/topics'), fail);
+    });
 
   return (
     <ScrollView
