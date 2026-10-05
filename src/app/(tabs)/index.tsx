@@ -3,13 +3,16 @@
  * (split view, rows aligned by verse). Tap verses to select them, then bookmark, highlight,
  * note, tag, copy/share, or open the study view (Strong's words + cross references).
  * The drawer (menu button) lists books and chapters; the floating bar at the bottom moves
- * between chapters.
+ * between chapters. Full screen hides the header, the tab bar and the status bar and keeps only
+ * the previous / next chapter arrows.
  */
 import * as Clipboard from 'expo-clipboard';
-import { router } from 'expo-router';
+import { router, useIsFocused } from 'expo-router';
+import { StatusBar } from 'expo-status-bar';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   Alert,
+  BackHandler,
   Pressable,
   ScrollView,
   Share,
@@ -32,7 +35,7 @@ import { getBooks, getChapter, getRange, useAsync, type Extra, type Verse } from
 import { adjacentChapter, encodeRanges, formatRef, selectionToRanges, type VerseRange } from '@/bible/reference';
 import { useCurrentVersion, useSplitVersion, useVersions, type BibleVersion } from '@/bible/versions';
 import { BookDrawer } from '@/components/book-drawer';
-import { CHAPTER_BAR_HEIGHT, ChapterBar } from '@/components/chapter-bar';
+import { CHAPTER_BAR_HEIGHT, ChapterArrows, ChapterBar } from '@/components/chapter-bar';
 import { Icon, Icons } from '@/components/icon';
 import { MenuItem, Popover } from '@/components/popover';
 import { ThemedText } from '@/components/themed-text';
@@ -86,7 +89,11 @@ type Extras = ReturnType<typeof groupExtras>;
 export default function ReaderScreen() {
   const theme = useTheme();
   const insets = useSafeAreaInsets();
-  const bottomInset = useTabBottomInset();
+  const tabBottomInset = useTabBottomInset();
+  const focused = useIsFocused();
+  const [fullscreen, setFullscreen] = useSetting(settings.fullscreen);
+  // the tab bar is gone, so only the phone's own bottom edge is left to avoid
+  const bottomInset = fullscreen ? insets.bottom + Spacing.two : tabBottomInset;
   const version = useCurrentVersion();
   const splitVersion = useSplitVersion();
   const { versions } = useVersions();
@@ -220,6 +227,16 @@ export default function ReaderScreen() {
     };
   }, [playing, viewport.height]);
 
+  // back leaves full screen first
+  useEffect(() => {
+    if (!fullscreen || !focused) return;
+    const sub = BackHandler.addEventListener('hardwareBackPress', () => {
+      setFullscreen(false);
+      return true;
+    });
+    return () => sub.remove();
+  }, [fullscreen, focused]);
+
   const prev = adjacentChapter(books, chapterAri, -1);
   const next = adjacentChapter(books, chapterAri, 1);
   const go = (ari: number | null) => {
@@ -262,47 +279,51 @@ export default function ReaderScreen() {
 
   return (
     <View style={[styles.fill, { backgroundColor: theme.background }]}>
-      <View
-        style={[
-          styles.header,
-          {
-            height: insets.top + HEADER_HEIGHT,
-            paddingTop: insets.top,
-            paddingLeft: insets.left + Spacing.two,
-            paddingRight: insets.right + Spacing.two,
-            backgroundColor: theme.background,
-            borderBottomColor: theme.border,
-          },
-        ]}>
-        <View style={styles.headerSide}>
-          <IconButton icon={Icons.menu} label="Books and chapters" size={26} onPress={() => setDrawer(true)} />
-        </View>
-        <Pressable
-          onPress={() => router.push('/version-picker')}
-          accessibilityLabel="Change version"
-          style={({ pressed }) => [
-            styles.tab,
-            { backgroundColor: theme.tint },
-            pressed && styles.pressed,
+      {focused && <StatusBar hidden={fullscreen} />}
+      {!fullscreen && (
+        <View
+          style={[
+            styles.header,
+            {
+              height: insets.top + HEADER_HEIGHT,
+              paddingTop: insets.top,
+              paddingLeft: insets.left + Spacing.two,
+              paddingRight: insets.right + Spacing.two,
+              backgroundColor: theme.background,
+              borderBottomColor: theme.border,
+            },
           ]}>
-          <Text numberOfLines={1} style={styles.tabVersion}>
-            {split && side ? `${version.shortName} | ${side.shortName}` : version.shortName}
-          </Text>
-          <Text numberOfLines={1} style={styles.tabPassage}>
-            {bookTitle} · Ch.{chapter}
-          </Text>
-        </Pressable>
-        <View style={[styles.headerSide, styles.headerActions]}>
-          <IconButton icon={Icons.search} label="Search" color={theme.textSecondary} onPress={() => router.navigate('/search')} />
-          <IconButton
-            icon={splitOn ? Icons.splitOn : Icons.split}
-            label={splitOn ? 'Single version' : 'Show two versions side by side'}
-            color={splitOn ? theme.tint : theme.textSecondary}
-            onPress={toggleSplit}
-          />
-          <IconButton icon={Icons.moreVertical} label="More" color={theme.textSecondary} onPress={() => setMenu('more')} />
+          <View style={styles.headerSide}>
+            <IconButton icon={Icons.menu} label="Books and chapters" size={26} onPress={() => setDrawer(true)} />
+          </View>
+          <Pressable
+            onPress={() => router.push('/version-picker')}
+            accessibilityLabel="Change version"
+            style={({ pressed }) => [
+              styles.tab,
+              { backgroundColor: theme.tint },
+              pressed && styles.pressed,
+            ]}>
+            <Text numberOfLines={1} style={styles.tabVersion}>
+              {split && side ? `${version.shortName} | ${side.shortName}` : version.shortName}
+            </Text>
+            <Text numberOfLines={1} style={styles.tabPassage}>
+              {bookTitle} · Ch.{chapter}
+            </Text>
+          </Pressable>
+          <View style={[styles.headerSide, styles.headerActions]}>
+            <IconButton icon={Icons.search} label="Search" color={theme.textSecondary} onPress={() => router.navigate('/search')} />
+            <IconButton
+              icon={splitOn ? Icons.splitOn : Icons.split}
+              label={splitOn ? 'Single version' : 'Show two versions side by side'}
+              color={splitOn ? theme.tint : theme.textSecondary}
+              onPress={toggleSplit}
+            />
+            <IconButton icon={Icons.fullscreen} label="Full screen" color={theme.textSecondary} onPress={() => setFullscreen(true)} />
+            <IconButton icon={Icons.moreVertical} label="More" color={theme.textSecondary} onPress={() => setMenu('more')} />
+          </View>
         </View>
-      </View>
+      )}
 
       <View style={styles.fill} onLayout={(e) => setViewport(e.nativeEvent.layout)}>
         <ScrollView
@@ -310,7 +331,11 @@ export default function ReaderScreen() {
           style={styles.fill}
           contentContainerStyle={[
             styles.content,
-            { paddingHorizontal: padding + sideInset, paddingBottom: bottomInset + CHAPTER_BAR_HEIGHT + (selected.size ? 200 : Spacing.five) },
+            {
+              paddingHorizontal: padding + sideInset,
+              paddingTop: (fullscreen ? insets.top : 0) + Spacing.three,
+              paddingBottom: bottomInset + CHAPTER_BAR_HEIGHT + (selected.size ? 200 : Spacing.five),
+            },
           ]}
           scrollEventThrottle={32}
           onScroll={(e) => (offset.current = e.nativeEvent.contentOffset.y)}
@@ -399,6 +424,13 @@ export default function ReaderScreen() {
             bottom={bottomInset}
             onDone={clearSelection}
           />
+        ) : fullscreen ? (
+          <ChapterArrows
+            bottom={bottomInset}
+            onPrev={prev == null ? null : () => go(prev)}
+            onNext={next == null ? null : () => go(next)}
+            onExit={() => setFullscreen(false)}
+          />
         ) : (
           <ChapterBar
             bottom={bottomInset}
@@ -419,7 +451,7 @@ export default function ReaderScreen() {
       </View>
 
       <Popover visible={menu === 'more'} onClose={() => setMenu(null)} style={[styles.morePopover, { top: insets.top + HEADER_HEIGHT - Spacing.one }]}>
-        <MoreMenu split={split} onClose={() => setMenu(null)} />
+        <MoreMenu split={split} onClose={() => setMenu(null)} onFullscreen={() => setFullscreen(true)} />
       </Popover>
 
       <BookDrawer
@@ -604,7 +636,7 @@ function ReadingOptions({ canSplit }: { canSplit: boolean }) {
   );
 }
 
-function MoreMenu({ split, onClose }: { split: boolean; onClose: () => void }) {
+function MoreMenu({ split, onClose, onFullscreen }: { split: boolean; onClose: () => void; onFullscreen: () => void }) {
   const open = (fn: () => void) => () => {
     onClose();
     fn();
@@ -612,6 +644,7 @@ function MoreMenu({ split, onClose }: { split: boolean; onClose: () => void }) {
   return (
     <>
       <MenuItem icon={Icons.goTo} label="Go to passage…" onPress={open(() => router.push('/passage'))} />
+      <MenuItem icon={Icons.fullscreen} label="Full screen" onPress={open(onFullscreen)} />
       <MenuItem icon={Icons.translate} label="Change version" onPress={open(() => router.push('/version-picker'))} />
       {split && (
         <MenuItem
@@ -772,7 +805,7 @@ const styles = StyleSheet.create({
   tabVersion: { color: '#ffffff', fontSize: 14, lineHeight: 17, fontWeight: '800', letterSpacing: 0.3 },
   tabPassage: { color: 'rgba(255,255,255,0.88)', fontSize: 11, lineHeight: 14 },
   headerActions: { marginLeft: 'auto', flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
-  content: { paddingTop: Spacing.three, maxWidth: MaxContentWidth, width: '100%', alignSelf: 'center' },
+  content: { maxWidth: MaxContentWidth, width: '100%', alignSelf: 'center' },
   heading: { fontWeight: '700', textAlign: 'center', marginTop: Spacing.three, marginBottom: Spacing.two },
   verse: { paddingVertical: 2, paddingHorizontal: Spacing.one, borderLeftWidth: 3, borderLeftColor: 'transparent', borderRadius: 4 },
   paragraph: { marginTop: Spacing.two },

@@ -21,7 +21,10 @@ every version. A range is `ari .. ari_end` (inclusive); a single verse has `ari_
 
 ## 1. Bible version file (`<id>.db`, format 1)
 
-Built by `../tools/build_bible_db.py bible <zoe dir> <out.db>` from the old app's data.
+Built by `../tools/build_bible_db.py bible <zoe dir> <out.db>` from the old app's data, or by
+`build_bible_db.py text <file> <out.db> --id ID --name NAME` from a verse-per-line text (eBible.org
+VPL, or "Genesis 1:1<TAB>text"). `build_bible_db.py free <app dir>` builds the bundled public-domain
+versions (BSB, WEB, ASV, YLT, WBT) and regenerates `src/bible/bundled.ts`.
 Lives at `<documents>/SQLite/bibles/<id>.db`; **the file name must be `info.id` + `.db`**.
 
 ```sql

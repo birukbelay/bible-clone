@@ -49,4 +49,6 @@ export const Icons = {
   pencil: { ios: 'pencil', md: 'edit' },
   translate: { ios: 'character.book.closed', md: 'translate' },
   goTo: { ios: 'book.pages', md: 'auto_stories' },
+  fullscreen: { ios: 'arrow.up.left.and.arrow.down.right', md: 'fullscreen' },
+  fullscreenExit: { ios: 'arrow.down.right.and.arrow.up.left', md: 'fullscreen_exit' },
 } satisfies Record<string, IconName>;

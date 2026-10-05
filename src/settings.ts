@@ -57,6 +57,8 @@ export const settings = {
   splitVersion: createSetting('reader.splitVersion', 'KJV'),
   /** width of the left column in the split view, 0..1 */
   splitRatio: createSetting('reader.splitRatio', 0.5),
+  /** reader without its header, the tab bar and the status bar; only prev / next chapter stay */
+  fullscreen: createSetting('reader.fullscreen', false),
   /** auto-scroll speed (play button), multiple of the base speed */
   scrollSpeed: createSetting('reader.scrollSpeed', 1),
   /** URL of a versions catalog JSON (see docs/fyn-rn-data.md); empty = none */

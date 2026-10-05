@@ -65,7 +65,46 @@ export function ChapterBar({
   );
 }
 
+/** Full-screen reading: only previous / next chapter, and the way back out. */
+export function ChapterArrows({
+  bottom,
+  onPrev,
+  onNext,
+  onExit,
+}: {
+  bottom: number;
+  onPrev: (() => void) | null;
+  onNext: (() => void) | null;
+  onExit: () => void;
+}) {
+  const theme = useTheme();
+  return (
+    <View style={[styles.arrows, { bottom, backgroundColor: theme.background, borderColor: theme.border }]}>
+      <IconButton icon={Icons.left} label="Previous chapter" size={26} disabled={!onPrev} onPress={() => onPrev?.()} />
+      <IconButton icon={Icons.fullscreenExit} label="Exit full screen" color={theme.textSecondary} onPress={onExit} />
+      <IconButton icon={Icons.right} label="Next chapter" size={26} disabled={!onNext} onPress={() => onNext?.()} />
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  arrows: {
+    position: 'absolute',
+    alignSelf: 'center',
+    height: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.three,
+    paddingHorizontal: Spacing.two,
+    borderRadius: 24,
+    borderWidth: StyleSheet.hairlineWidth,
+    opacity: 0.92,
+    shadowColor: '#000',
+    shadowOpacity: 0.14,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 6,
+  },
   bar: {
     position: 'absolute',
     height: CHAPTER_BAR_HEIGHT,

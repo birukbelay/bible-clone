@@ -20,12 +20,10 @@ import { useSyncExternalStore } from 'react';
 
 import { settings } from '@/settings';
 
+import { BUNDLED } from './bundled';
+
 export const FORMAT = 1;
 
-const BUNDLED: Record<string, number> = {
-  AMH1954: require('@/assets/db/AMH1954.db'),
-  KJV: require('@/assets/db/KJV.db'),
-};
 const STRONGS_ASSET: number = require('@/assets/db/strongs.db');
 
 /** Directories as expo-sqlite sees them (plain paths)... */

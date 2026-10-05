@@ -1,12 +1,18 @@
+import { usePathname } from 'expo-router';
 import { NativeTabs } from 'expo-router/unstable-native-tabs';
 
 import { useTheme } from '@/hooks/use-theme';
+import { settings, useSetting } from '@/settings';
 
 export default function AppTabs() {
   const colors = useTheme();
+  const [fullscreen] = useSetting(settings.fullscreen);
+  // full screen belongs to the reader; the other tabs always keep the bar
+  const reading = usePathname() === '/';
 
   return (
     <NativeTabs
+      hidden={fullscreen && reading}
       backgroundColor={colors.background}
       indicatorColor={colors.backgroundElement}
       tintColor={colors.tint}
