@@ -14,6 +14,14 @@ export const Colors = {
     backgroundElement: '#F0F0F3',
     backgroundSelected: '#E0E1E6',
     textSecondary: '#60646C',
+    tint: '#9B1C1C',
+    /** light background of the selected book, current chapter row, ... */
+    tintSoft: '#FBECEC',
+    /** second version's verse numbers in split view */
+    splitTint: '#2E7D32',
+    border: '#D9D9E0',
+    redLetter: '#B42318',
+    danger: '#D92D20',
   },
   dark: {
     text: '#ffffff',
@@ -21,8 +29,26 @@ export const Colors = {
     backgroundElement: '#212225',
     backgroundSelected: '#2E3135',
     textSecondary: '#B0B4BA',
+    tint: '#E5484D',
+    tintSoft: '#3B1F21',
+    splitTint: '#5BB98B',
+    border: '#3A3D42',
+    redLetter: '#F97066',
+    danger: '#F97066',
   },
 } as const;
+
+/** Verse highlight palette; the index is what gets stored in the highlights table. */
+export const HighlightColors = [
+  'rgba(250, 204, 21, 0.35)',
+  'rgba(74, 222, 128, 0.32)',
+  'rgba(96, 165, 250, 0.32)',
+  'rgba(244, 114, 182, 0.32)',
+  'rgba(251, 146, 60, 0.35)',
+] as const;
+
+/** Default colors offered for new tags. */
+export const TagColors = ['#208AEF', '#12B76A', '#F79009', '#D92D20', '#7A5AF8', '#667085'] as const;
 
 export type ThemeColor = keyof typeof Colors.light & keyof typeof Colors.dark;
 
