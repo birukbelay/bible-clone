@@ -36,7 +36,37 @@ export const Colors = {
     redLetter: '#F97066',
     danger: '#F97066',
   },
+  /** warm paper; light status bar and controls */
+  sepia: {
+    text: '#3B2F22',
+    background: '#F4ECD8',
+    backgroundElement: '#EADFC6',
+    backgroundSelected: '#DFD1B3',
+    textSecondary: '#6E5E4A',
+    tint: '#8B3A1A',
+    tintSoft: '#EDD9C0',
+    splitTint: '#4A6B2A',
+    border: '#D6C7A8',
+    redLetter: '#A5321B',
+    danger: '#B42318',
+  },
+  /** pure black for OLED screens, dimmer text; dark status bar and controls */
+  black: {
+    text: '#D7D7D7',
+    background: '#000000',
+    backgroundElement: '#111111',
+    backgroundSelected: '#1C1C1C',
+    textSecondary: '#8E8E8E',
+    tint: '#D9534F',
+    tintSoft: '#2A1414',
+    splitTint: '#4FA77A',
+    border: '#262626',
+    redLetter: '#E0675F',
+    danger: '#E0675F',
+  },
 } as const;
+
+export type Palette = { [K in keyof typeof Colors.light]: string };
 
 /** Verse highlight palette; the index is what gets stored in the highlights table. */
 export const HighlightColors = [

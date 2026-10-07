@@ -7,7 +7,7 @@
  * the previous / next chapter arrows.
  */
 import * as Clipboard from 'expo-clipboard';
-import { router, useIsFocused } from 'expo-router';
+import { router, useIsFocused, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
@@ -30,7 +30,9 @@ import { scheduleOnRN } from 'react-native-worklets';
 import { bookOf, chapterOf, isSameChapter, verseOf } from '@/bible/ari';
 import { canonStatus, isExtraVerse } from '@/bible/canon';
 import { plainText } from '@/bible/markup';
+import * as playback from '@/bible/playback';
 import { getBooks, getChapter, getRange, useAsync, type Extra, type Verse } from '@/bible/queries';
+import { canGoBack, canGoForward, formatVerses, historyStep, markChapterRead, printPage, recordVisit } from '@/bible/reading';
 import { adjacentChapter, encodeRanges, formatRef, selectionToRanges, type VerseRange } from '@/bible/reference';
 import { useCurrentVersion, useSplitVersion, useVersions, type BibleVersion } from '@/bible/versions';
 import { BookDrawer } from '@/components/book-drawer';
@@ -42,12 +44,13 @@ import { ThemedText } from '@/components/themed-text';
 import { Button, Empty, IconButton, Segmented, type Interaction } from '@/components/ui';
 import { VerseText } from '@/components/verse-text';
 import { HighlightColors, MaxContentWidth, Spacing } from '@/constants/theme';
-import { addBookmarks, removeBookmarks, setHighlight, setRead } from '@/db/actions';
+import { addBookmarks, addMemoryVerses, removeBookmarks, setHighlight, setRead } from '@/db/actions';
 import { marksOf, useChapterMarks, type VerseMarks } from '@/db/annotations';
 import { requestBrowserFullscreen, useBrowserFullscreen, useDocumentTitle, useReaderShortcuts } from '@/hooks/use-reader-shortcuts';
 import { useTabBottomInset } from '@/hooks/use-tab-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { useT } from '@/i18n';
+import { printHtml, printAvailable } from '@/native/files';
 import { useDueReadings } from '@/plans';
 import { settings, useSetting } from '@/settings';
 
@@ -60,6 +63,10 @@ const MAX_SPLIT_WIDTH = 1600;
 const WIDE_GUTTER = 48;
 /** auto-scroll speed at the default text size, px/s */
 const SCROLL_SPEED = 26;
+/** a chapter counts as read after this long on screen */
+const READ_AFTER = 8000;
+/** height of the player above the chapter bar */
+const PLAYER_HEIGHT = 96;
 
 /** One scroll unit: a verse (single view) or a row of both versions' verses (split view). */
 type Unit = { ari: number; ariEnd: number; left: Verse[]; right: Verse[] };
@@ -111,6 +118,10 @@ export default function ReaderScreen() {
   const [fontSize] = useSetting(settings.fontSize);
   const [redLetters] = useSetting(settings.redLetters);
   const [showStrongs] = useSetting(settings.showStrongs);
+  const [lineSpacing] = useSetting(settings.lineSpacing);
+  const [fontFamily] = useSetting(settings.fontFamily);
+  const [margins] = useSetting(settings.margins);
+  const [verseLines] = useSetting(settings.verseLines);
   const [showNotes, setShowNotes] = useSetting(settings.showNotes);
   const [splitOn, setSplitOn] = useSetting(settings.split);
   const [ratio, setRatio] = useSetting(settings.splitRatio);
@@ -121,6 +132,27 @@ export default function ReaderScreen() {
   const [target, setTarget] = useState(() => ({ ari: settings.position.get() }));
   useEffect(() => settings.position.subscribe(() => setTarget({ ari: settings.position.get() })), []);
   const chapterAri = target.ari & ~255;
+
+  // history (back / forward moves set fromHistory, so they are not recorded again)
+  const fromHistory = useRef(false);
+  useEffect(() => {
+    if (fromHistory.current) fromHistory.current = false;
+    else recordVisit(chapterAri);
+  }, [chapterAri]);
+  const [history] = useSetting(settings.history);
+  const historyGo = (delta: 1 | -1) => {
+    const ari = historyStep(delta);
+    if (ari == null) return;
+    fromHistory.current = true;
+    settings.position.set(ari);
+  };
+
+  // reading progress: a chapter left open for a while counts as read
+  useEffect(() => {
+    if (!focused) return;
+    const timer = setTimeout(() => markChapterRead(chapterAri), READ_AFTER);
+    return () => clearTimeout(timer);
+  }, [chapterAri, focused]);
 
   const versionId = version?.id ?? '';
   const sideId = splitOn && versions.length > 1 && splitVersion ? splitVersion.id : null;
@@ -229,7 +261,28 @@ export default function ReaderScreen() {
   };
   const onScrollEnd = (e: NativeSyntheticEvent<NativeScrollEvent>) => savePosition(e.nativeEvent.contentOffset.y);
 
-  // ---- auto-scroll (play button) ----
+  // ---- listening (audio Bible or read aloud) ----
+  const listenMode = playback.usePlaybackValue((s) => s.mode);
+  const listenVersion = playback.usePlaybackValue((s) => s.versionId);
+  const listenChapter = playback.usePlaybackValue((s) => s.chapterAri);
+  const listenPlaying = playback.usePlaybackValue((s) => s.playing);
+  const listenVerse = playback.usePlaybackValue((s) => s.verseAri);
+  const listeningHere = listenMode != null && listenVersion === versionId && isSameChapter(listenChapter, chapterAri);
+  // keeps the verse being read on screen
+  useEffect(() => {
+    if (!listeningHere || !listenVerse) return;
+    const unit = units.find((u) => listenVerse >= u.ari && listenVerse <= u.ariEnd);
+    const layout = unit && layouts.current.get(unit.ari);
+    if (!layout) return;
+    const top = offset.current;
+    const bottom = top + viewport.height - (CHAPTER_BAR_HEIGHT + PLAYER_HEIGHT + Spacing.five);
+    if (layout.y < top || layout.y + layout.height > bottom) {
+      scrollRef.current?.scrollTo({ y: Math.max(0, layout.y - Spacing.five), animated: true });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- units and layouts follow the chapter
+  }, [listenVerse, listeningHere]);
+
+  // ---- auto-scroll (play button when there is nothing to listen with, or long press) ----
   const [playing, setPlaying] = useState(false);
   const [lastChapter, setLastChapter] = useState(chapterAri);
   if (lastChapter !== chapterAri) {
@@ -278,6 +331,32 @@ export default function ReaderScreen() {
   const go = (ari: number | null) => {
     if (ari != null) settings.position.set(ari);
   };
+  // play: listen to the chapter (audio Bible, else read aloud); without either, scroll
+  const onPlay = () => {
+    if (playing) {
+      setPlaying(false);
+      return;
+    }
+    if (listeningHere) {
+      playback.toggle();
+      return;
+    }
+    const position = settings.position.get();
+    playback
+      .start(versionId, chapterAri, isSameChapter(position, chapterAri) && verseOf(position) > 1 ? position : 0)
+      .then((started) => {
+        if (!started) setPlaying(true);
+      }, showError(t('Could not play this chapter')));
+  };
+  const printChapter = () => {
+    if (!data || !version) return;
+    if (!printAvailable()) {
+      toast(t('Printing is not available on this device'));
+      return;
+    }
+    const lines = data.main.verses.map((v) => `${v.label || verseOf(v.ari)} ${plainText(v.text).trim()}`);
+    printHtml(printPage(`${bookTitle} ${chapter} (${version.shortName})`, lines, version.name)).catch(showError(t('Could not print')));
+  };
   const enterFullscreen = () => {
     requestBrowserFullscreen();
     setFullscreen(true);
@@ -316,7 +395,7 @@ export default function ReaderScreen() {
   const wide = viewport.width >= WIDE_SPLIT;
   const maxWidth = split ? MAX_SPLIT_WIDTH : MaxContentWidth;
   const contentWidth = Math.min(viewport.width, maxWidth);
-  const padding = split ? (wide ? Spacing.four : Spacing.two + 2) : Spacing.three;
+  const padding = split ? (wide ? Spacing.four : Spacing.two + 2) : Spacing.three + margins;
   const gutter = split && wide ? WIDE_GUTTER : GUTTER;
   const sideInset = Math.max(insets.left, insets.right);
   const usable = Math.max(0, contentWidth - 2 * (padding + sideInset) - gutter);
@@ -394,7 +473,7 @@ export default function ReaderScreen() {
               maxWidth,
               paddingHorizontal: padding + sideInset,
               paddingTop: (fullscreen ? insets.top : 0) + Spacing.three,
-              paddingBottom: bottomInset + CHAPTER_BAR_HEIGHT + (selected.size ? 200 : Spacing.five),
+              paddingBottom: bottomInset + CHAPTER_BAR_HEIGHT + (selected.size ? 260 : listenMode ? PLAYER_HEIGHT + Spacing.five : Spacing.five),
             },
           ]}
           scrollEventThrottle={32}
@@ -443,6 +522,7 @@ export default function ReaderScreen() {
               const unitMarks = marksOf(marks, u.ari, u.ariEnd);
               const highlight = unitMarks.highlight != null ? HighlightColors[unitMarks.highlight] : undefined;
               const isSelected = selected.has(u.ari);
+              const isPlaying = listeningHere && listenVerse >= u.ari && listenVerse <= u.ariEnd;
               const mainColumn = (
                 <Column
                   verses={u.left}
@@ -452,6 +532,8 @@ export default function ReaderScreen() {
                   labelColor={theme.tint}
                   redLetters={redLetters}
                   showStrongs={showStrongs && version.strongs}
+                  lineSpacing={lineSpacing}
+                  fontFamily={fontFamily}
                 />
               );
               return (
@@ -459,10 +541,12 @@ export default function ReaderScreen() {
                   key={`${data.key}:${u.ari}`}
                   onLayout={(e) => onUnitLayout(data.key, u, e)}
                   onPress={() => toggle(u.ari)}
+                  accessibilityState={{ selected: isSelected }}
                   style={[
                     split ? [styles.splitRow, { borderBottomColor: theme.border }] : styles.verse,
-                    !split && u.left[0]?.para ? styles.paragraph : null,
+                    !split && (verseLines ? styles.verseLine : u.left[0]?.para ? styles.paragraph : null),
                     highlight && { backgroundColor: highlight },
+                    isPlaying && { borderLeftColor: theme.splitTint, backgroundColor: theme.tintSoft },
                     isSelected && { backgroundColor: theme.backgroundSelected, borderLeftColor: theme.tint },
                   ]}>
                   {split ? (
@@ -480,6 +564,8 @@ export default function ReaderScreen() {
                           labelColor={theme.splitTint}
                           redLetters={redLetters}
                           showStrongs={showStrongs && !!side?.strongs}
+                          lineSpacing={lineSpacing}
+                          fontFamily={fontFamily}
                         />
                       </View>
                     </View>
@@ -528,22 +614,43 @@ export default function ReaderScreen() {
             bottom={bottomInset}
             book={bookTitle}
             chapter={chapter}
-            playing={playing}
+            playing={playing || (listeningHere && listenPlaying)}
+            playIcon={playing || (listeningHere && listenPlaying) ? Icons.pause : listenMode || playback.listeningAvailable() ? Icons.headphones : Icons.play}
+            playLabel={
+              playing
+                ? t('Stop scrolling')
+                : listeningHere && listenPlaying
+                  ? t('Pause')
+                  : playback.listeningAvailable()
+                    ? t('Listen to this chapter')
+                    : t('Scroll automatically')
+            }
+            onPlayLongPress={() => setPlaying(!playing)}
             onSettings={() => setMenu('options')}
-            onPlay={() => setPlaying(!playing)}
+            onPlay={onPlay}
             onPrev={prev == null ? null : () => go(prev)}
             onNext={next == null ? null : () => go(next)}
             onTitle={() => setDrawer(true)}
           />
         )}
 
+        {listenMode && !selected.size && !fullscreen && <PlayerPanel bottom={bottomInset + CHAPTER_BAR_HEIGHT + Spacing.two} />}
+
         <Popover visible={menu === 'options'} onClose={() => setMenu(null)} style={[styles.optionsPopover, { bottom: bottomInset + CHAPTER_BAR_HEIGHT + Spacing.two }]}>
-          <ReadingOptions canSplit={versions.length > 1} />
+          <ReadingOptions canSplit={versions.length > 1} maxHeight={Math.max(240, viewport.height - bottomInset - CHAPTER_BAR_HEIGHT - Spacing.five)} />
         </Popover>
       </View>
 
       <Popover visible={menu === 'more'} onClose={() => setMenu(null)} style={[styles.morePopover, { top: insets.top + HEADER_HEIGHT - Spacing.one }]}>
-        <MoreMenu split={split} onClose={() => setMenu(null)} onFullscreen={enterFullscreen} />
+        <MoreMenu
+          split={split}
+          onClose={() => setMenu(null)}
+          onFullscreen={enterFullscreen}
+          onBack={canGoBack(history) ? () => historyGo(-1) : null}
+          onForward={canGoForward(history) ? () => historyGo(1) : null}
+          onPrint={printChapter}
+          maxHeight={Math.max(240, viewport.height - Spacing.five)}
+        />
       </Popover>
 
       <BookDrawer
@@ -570,6 +677,8 @@ function Column({
   labelColor,
   redLetters,
   showStrongs,
+  lineSpacing,
+  fontFamily,
 }: {
   verses: Verse[];
   extras: Extras;
@@ -578,6 +687,8 @@ function Column({
   labelColor: string;
   redLetters: boolean;
   showStrongs: boolean;
+  lineSpacing: number;
+  fontFamily: 'sans' | 'serif' | 'mono';
 }) {
   const theme = useTheme();
   const t = useT();
@@ -597,7 +708,14 @@ function Column({
     return (
       <View key={v.ari}>
         {extras.titles.get(v.ari)?.map((title, i) => (
-          <VerseText key={i} text={title} fontSize={fontSize - 2} style={[styles.heading, { color: theme.textSecondary }]} />
+          <VerseText
+            key={i}
+            text={title}
+            fontSize={fontSize - 2}
+            fontFamily={fontFamily}
+            style={[styles.heading, { color: theme.textSecondary }]}
+            accessibilityRole="header"
+          />
         ))}
         <VerseText
           text={v.text}
@@ -605,6 +723,8 @@ function Column({
           labelColor={labelColor}
           badge={isExtraVerse(v.ari, v.ari_end) ? t('extra') : undefined}
           fontSize={fontSize}
+          lineSpacing={lineSpacing}
+          fontFamily={fontFamily}
           redLetters={redLetters}
           showStrongs={showStrongs}
           onStrongPress={(n) => router.push({ pathname: '/strongs/[number]', params: { number: n } })}
@@ -743,16 +863,21 @@ function SplitDivider({
 
 const LABEL_LENGTH = 120;
 
-function ReadingOptions({ canSplit }: { canSplit: boolean }) {
+function ReadingOptions({ canSplit, maxHeight }: { canSplit: boolean; maxHeight: number }) {
   const theme = useTheme();
   const t = useT();
   const [fontSize, setFontSize] = useSetting(settings.fontSize);
+  const [lineSpacing, setLineSpacing] = useSetting(settings.lineSpacing);
+  const [margins, setMargins] = useSetting(settings.margins);
+  const [fontFamily, setFontFamily] = useSetting(settings.fontFamily);
+  const [verseLines, setVerseLines] = useSetting(settings.verseLines);
   const [redLetters, setRedLetters] = useSetting(settings.redLetters);
   const [showStrongs, setShowStrongs] = useSetting(settings.showStrongs);
   const [showNotes, setShowNotes] = useSetting(settings.showNotes);
   const [split, setSplit] = useSetting(settings.split);
   const [speed, setSpeed] = useSetting(settings.scrollSpeed);
   const [appTheme, setAppTheme] = useSetting(settings.theme);
+  const round = (n: number) => Math.round(n * 100) / 100;
   const stepper = (value: string, onLess: (() => void) | null, onMore: (() => void) | null, less: string, more: string) => (
     <View style={styles.stepper}>
       <IconButton icon={Icons.textSmaller} label={less} color={theme.tint} disabled={!onLess} onPress={() => onLess?.()} />
@@ -760,8 +885,11 @@ function ReadingOptions({ canSplit }: { canSplit: boolean }) {
       <IconButton icon={Icons.textLarger} label={more} color={theme.tint} disabled={!onMore} onPress={() => onMore?.()} />
     </View>
   );
+  const toggle = (label: string, value: boolean, onChange: (v: boolean) => void) => (
+    <MenuItem label={label} right={<Switch value={value} onValueChange={onChange} accessibilityLabel={label} />} />
+  );
   return (
-    <>
+    <ScrollView style={{ maxHeight }}>
       <MenuItem
         label={t('Text size')}
         right={stepper(
@@ -773,42 +901,110 @@ function ReadingOptions({ canSplit }: { canSplit: boolean }) {
         )}
       />
       <MenuItem
+        label={t('Line spacing')}
+        right={stepper(
+          lineSpacing.toFixed(1),
+          lineSpacing > 1.21 ? () => setLineSpacing(round(lineSpacing - 0.1)) : null,
+          lineSpacing < 2.39 ? () => setLineSpacing(round(lineSpacing + 0.1)) : null,
+          t('Less space'),
+          t('More space'),
+        )}
+      />
+      <MenuItem
+        label={t('Margins')}
+        right={stepper(
+          String(margins),
+          margins > 0 ? () => setMargins(margins - 8) : null,
+          margins < 48 ? () => setMargins(margins + 8) : null,
+          t('Narrower margins'),
+          t('Wider margins'),
+        )}
+      />
+      <MenuItem
         label={t('Scroll speed')}
         right={stepper(
           `${speed}×`,
-          speed > 0.25 ? () => setSpeed(Math.round((speed - 0.25) * 100) / 100) : null,
-          speed < 4 ? () => setSpeed(Math.round((speed + 0.25) * 100) / 100) : null,
+          speed > 0.25 ? () => setSpeed(round(speed - 0.25)) : null,
+          speed < 4 ? () => setSpeed(round(speed + 0.25)) : null,
           t('Slower'),
           t('Faster'),
         )}
       />
       <View style={styles.themeRow}>
+        <ThemedText type="small" themeColor="textSecondary">
+          {t('Font')}
+        </ThemedText>
+        <Segmented
+          options={[
+            { value: 'sans', label: t('Sans') },
+            { value: 'serif', label: t('Serif') },
+            { value: 'mono', label: t('Mono') },
+          ]}
+          value={fontFamily}
+          onChange={setFontFamily}
+        />
+      </View>
+      <View style={styles.themeRow}>
+        <ThemedText type="small" themeColor="textSecondary">
+          {t('Theme')}
+        </ThemedText>
         <Segmented
           options={[
             { value: 'system', label: t('System') },
             { value: 'light', label: t('Light') },
+            { value: 'sepia', label: t('Sepia') },
             { value: 'dark', label: t('Dark') },
+            { value: 'black', label: t('Black') },
           ]}
           value={appTheme}
           onChange={setAppTheme}
         />
       </View>
-      <MenuItem label={t('Words of Jesus in red')} right={<Switch value={redLetters} onValueChange={setRedLetters} />} />
-      <MenuItem label={t("Strong's numbers")} right={<Switch value={showStrongs} onValueChange={setShowStrongs} />} />
-      <MenuItem label={t('Expand all notes')} right={<Switch value={showNotes} onValueChange={setShowNotes} />} />
-      {canSplit && <MenuItem label={t('Two versions side by side')} right={<Switch value={split} onValueChange={setSplit} />} />}
-    </>
+      {toggle(t('Each verse on its own line'), verseLines, setVerseLines)}
+      {toggle(t('Words of Jesus in red'), redLetters, setRedLetters)}
+      {toggle(t("Strong's numbers"), showStrongs, setShowStrongs)}
+      {toggle(t('Expand all notes'), showNotes, setShowNotes)}
+      {canSplit && toggle(t('Two versions side by side'), split, setSplit)}
+    </ScrollView>
   );
 }
 
-function MoreMenu({ split, onClose, onFullscreen }: { split: boolean; onClose: () => void; onFullscreen: () => void }) {
+function MoreMenu({
+  split,
+  maxHeight,
+  onClose,
+  onFullscreen,
+  onBack,
+  onForward,
+  onPrint,
+}: {
+  split: boolean;
+  maxHeight: number;
+  onClose: () => void;
+  onFullscreen: () => void;
+  onBack: (() => void) | null;
+  onForward: (() => void) | null;
+  onPrint: () => void;
+}) {
+  const theme = useTheme();
   const t = useT();
   const open = (fn: () => void) => () => {
     onClose();
     fn();
   };
   return (
-    <>
+    <ScrollView style={{ maxHeight }}>
+      <View style={styles.historyRow}>
+        <IconButton icon={Icons.back} label={t('Back')} color={theme.tint} disabled={!onBack} onPress={() => onBack?.()} />
+        <Pressable
+          accessibilityRole="button"
+          onPress={open(() => router.push('/history' as Href))}
+          style={({ pressed, hovered }: Interaction) => [styles.historyLabel, (pressed || hovered) && { backgroundColor: theme.backgroundElement }]}>
+          <Icon name={Icons.history} size={18} color={theme.tint} />
+          <ThemedText numberOfLines={1}>{t('History')}</ThemedText>
+        </Pressable>
+        <IconButton icon={Icons.forward} label={t('Forward')} color={theme.tint} disabled={!onForward} onPress={() => onForward?.()} />
+      </View>
       <MenuItem icon={Icons.goTo} label={t('Go to passage…')} onPress={open(() => router.push('/passage'))} />
       <MenuItem icon={Icons.fullscreen} label={t('Full screen')} onPress={open(onFullscreen)} />
       <MenuItem icon={Icons.translate} label={t('Change version')} onPress={open(() => router.push('/version-picker'))} />
@@ -819,11 +1015,101 @@ function MoreMenu({ split, onClose, onFullscreen }: { split: boolean; onClose: (
           onPress={open(() => router.push({ pathname: '/version-picker', params: { slot: 'split' } }))}
         />
       )}
+      <MenuItem icon={Icons.headphones} label={t('Audio Bible')} onPress={open(() => router.push('/audio' as Href))} />
+      <MenuItem icon={Icons.print} label={t('Print chapter')} onPress={open(onPrint)} />
       <MenuItem icon={Icons.plan} label={t('Reading plans')} onPress={open(() => router.push('/plans'))} />
+      <MenuItem icon={Icons.calendar} label={t('Daily readings')} onPress={open(() => router.push('/lectionary' as Href))} />
+      <MenuItem icon={Icons.chart} label={t('Reading progress')} onPress={open(() => router.push('/progress' as Href))} />
+      <MenuItem icon={Icons.memory} label={t('Memory verses')} onPress={open(() => router.push('/memory' as Href))} />
+      <MenuItem icon={Icons.prayer} label={t('Prayer list')} onPress={open(() => router.push('/prayers' as Href))} />
       <MenuItem icon={Icons.library} label={t('Bookmarks & notes')} onPress={open(() => router.navigate('/library'))} />
       <MenuItem icon={Icons.topic} label={t('Topics')} onPress={open(() => router.navigate('/topics'))} />
       <MenuItem icon={Icons.settings} label={t('Settings')} onPress={open(() => router.navigate('/settings'))} />
-    </>
+    </ScrollView>
+  );
+}
+
+/**
+ * Listening controls above the chapter bar: chapter and verse skips, play / pause, speed and the
+ * sleep timer. Shown while the audio Bible or read aloud is on.
+ */
+function PlayerPanel({ bottom }: { bottom: number }) {
+  const theme = useTheme();
+  const t = useT();
+  const state = playback.usePlayback();
+  const [sleepChoice, setSleepChoice] = useState<number | 'chapter'>(0);
+  const [barWidth, setBarWidth] = useState(0);
+  const rate = state.mode === 'tts' ? settings.ttsRate.get() : settings.audioRate.get();
+  const nextRate = playback.RATES[(playback.RATES.indexOf(rate) + 1) % playback.RATES.length] ?? 1;
+  const sleepIndex = playback.SLEEP_OPTIONS.indexOf(state.sleepAt === 0 ? 0 : sleepChoice);
+  const nextSleep = playback.SLEEP_OPTIONS[(sleepIndex + 1) % playback.SLEEP_OPTIONS.length];
+  const progress = state.duration > 0 ? Math.min(1, state.position / state.duration) : 0;
+  return (
+    <View
+      style={[styles.player, { bottom, backgroundColor: theme.backgroundElement, borderColor: theme.border }]}
+      accessibilityLabel={t('Player')}>
+      <View style={styles.playerTop}>
+        <Icon name={state.mode === 'audio' ? Icons.headphones : Icons.speaker} size={16} color={theme.tint} />
+        <ThemedText type="smallBold" numberOfLines={1} style={styles.fill}>
+          {state.title}
+          {state.mode === 'tts' ? ` · ${t('read aloud')}` : ''}
+        </ThemedText>
+        {state.mode === 'audio' && state.duration > 0 && (
+          <ThemedText type="small" themeColor="textSecondary" style={styles.time}>
+            {playback.formatTime(state.position)} / {playback.formatTime(state.duration)}
+          </ThemedText>
+        )}
+        <IconButton icon={Icons.settings} label={t('Audio Bible')} size={18} color={theme.textSecondary} onPress={() => router.push('/audio' as Href)} />
+        <IconButton icon={Icons.close} label={t('Stop')} size={18} color={theme.textSecondary} onPress={playback.stop} />
+      </View>
+      {state.mode === 'audio' && (
+        <Pressable
+          accessibilityRole="adjustable"
+          accessibilityLabel={t('Position')}
+          onLayout={(e) => setBarWidth(e.nativeEvent.layout.width)}
+          onPress={(e) => barWidth > 0 && state.duration > 0 && playback.seekTo((e.nativeEvent.locationX / barWidth) * state.duration)}
+          style={styles.progressTouch}>
+          <View style={[styles.progressTrack, { backgroundColor: theme.border }]}>
+            <View style={[styles.progressFill, { backgroundColor: theme.tint, width: `${progress * 100}%` }]} />
+          </View>
+        </Pressable>
+      )}
+      <View style={styles.playerControls}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('Speed {rate}×', { rate })}
+          onPress={() => playback.setRate(nextRate)}
+          style={[styles.playerChip, { borderColor: theme.border }]}>
+          <ThemedText type="smallBold">{rate}×</ThemedText>
+        </Pressable>
+        <IconButton icon={Icons.previous} label={t('Previous chapter')} color={theme.text} onPress={() => void playback.skipChapter(-1)} />
+        <IconButton icon={Icons.skipBack} label={t('Previous verse')} color={theme.text} onPress={() => playback.skipVerse(-1)} />
+        <IconButton
+          icon={state.playing ? Icons.pause : Icons.play}
+          label={state.playing ? t('Pause') : t('Play')}
+          size={32}
+          color={theme.tint}
+          onPress={playback.toggle}
+        />
+        <IconButton icon={Icons.skipForward} label={t('Next verse')} color={theme.text} onPress={() => playback.skipVerse(1)} />
+        <IconButton icon={Icons.next} label={t('Next chapter')} color={theme.text} onPress={() => void playback.skipChapter(1)} />
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={t('Sleep timer: {value}', { value: playback.sleepLabel(state.sleepAt === 0 ? 0 : sleepChoice) })}
+          onPress={() => {
+            setSleepChoice(nextSleep);
+            playback.setSleep(nextSleep);
+          }}
+          style={[styles.playerChip, { borderColor: state.sleepAt ? theme.tint : theme.border }]}>
+          <Icon name={Icons.timer} size={16} color={state.sleepAt ? theme.tint : theme.textSecondary} />
+          {state.sleepAt !== 0 && (
+            <ThemedText type="small" themeColor="tint" numberOfLines={1}>
+              {sleepChoice === 'chapter' ? t('Ch.') : sleepChoice}
+            </ThemedText>
+          )}
+        </Pressable>
+      </View>
+    </View>
   );
 }
 
@@ -847,21 +1133,20 @@ function SelectionBar({
   const theme = useTheme();
   const t = useT();
   const single = ranges.length === 1 && ranges[0].ari === ranges[0].ariEnd;
+  const encoded = encodeRanges(ranges);
 
-  const text = async () => {
-    const parts = await Promise.all(ranges.map((r) => getRange(versionId, r.ari, r.ariEnd)));
-    const body = parts
-      .flat()
-      .map((v) => plainText(v.text))
-      .join(' ');
-    return `${body}\n— ${reference} (${versionName})`;
-  };
+  const verses = async () => (await Promise.all(ranges.map((r) => getRange(versionId, r.ari, r.ariEnd)))).flat();
+  const text = async () => formatVerses(await verses(), reference, versionName);
 
   const run = (fn: () => Promise<unknown>, done = true) =>
     fn().then(
       () => done && onDone(),
       showError(t('Something went wrong')),
     );
+  const navigate = (href: Href) => {
+    router.push(href);
+    onDone();
+  };
 
   return (
     <View style={[styles.bar, { bottom, backgroundColor: theme.backgroundElement, borderColor: theme.border }]}>
@@ -875,12 +1160,14 @@ function SelectionBar({
         {HighlightColors.map((c, i) => (
           <Pressable
             key={c}
+            accessibilityRole="button"
             accessibilityLabel={t('Highlight color {number}', { number: i + 1 })}
             onPress={() => run(() => setHighlight(ranges, i))}
             style={[styles.swatch, { backgroundColor: c, borderColor: theme.border }]}
           />
         ))}
         <Pressable
+          accessibilityRole="button"
           accessibilityLabel={t('Remove highlight')}
           onPress={() => run(() => setHighlight(ranges, null))}
           style={[styles.swatch, styles.swatchClear, { borderColor: theme.border }]}>
@@ -896,35 +1183,52 @@ function SelectionBar({
         <Action
           icon={Icons.note}
           label={t('Note')}
-          onPress={() => {
-            router.push({ pathname: '/note', params: { ranges: encodeRanges(ranges.slice(0, 1)), version: versionId } });
-            onDone();
-          }}
+          onPress={() => navigate({ pathname: '/note', params: { ranges: encodeRanges(ranges.slice(0, 1)), version: versionId } })}
         />
-        <Action
-          icon={Icons.tag}
-          label={t('Tag')}
-          onPress={() => {
-            router.push({ pathname: '/tag-verses', params: { ranges: encodeRanges(ranges) } });
-            onDone();
-          }}
-        />
+        <Action icon={Icons.tag} label={t('Tag')} onPress={() => navigate({ pathname: '/tag-verses', params: { ranges: encoded } })} />
         <Action
           icon={Icons.copy}
           label={t('Copy')}
           onPress={() => run(async () => Clipboard.setStringAsync(await text()).then(() => toast(t('Copied'))))}
         />
         <Action icon={Icons.share} label={t('Share')} onPress={() => run(async () => share(await text()))} />
-        {single && (
-          <Action
-            icon={Icons.study}
-            label={t('Study')}
-            onPress={() => {
-              router.push({ pathname: '/study', params: { ari: String(ranges[0].ari) } });
-              onDone();
-            }}
-          />
+        {single ? (
+          <Action icon={Icons.study} label={t('Study')} onPress={() => navigate({ pathname: '/study', params: { ari: String(ranges[0].ari) } })} />
+        ) : (
+          <Action icon={Icons.image} label={t('Image')} onPress={() => navigate(`/verse-image?ranges=${encoded}&version=${versionId}` as Href)} />
         )}
+        <Action icon={Icons.compare} label={t('Compare')} onPress={() => navigate(`/compare?ranges=${encoded}` as Href)} />
+        <Action
+          icon={Icons.headphones}
+          label={t('Listen')}
+          onPress={() =>
+            run(async () => {
+              if (!(await playback.playFrom(versionId, ranges[0].ari))) toast(t('Listening is not available on this device'));
+            })
+          }
+        />
+        <Action
+          icon={Icons.memory}
+          label={t('Memorize')}
+          onPress={() => run(() => addMemoryVerses(ranges, versionId).then(() => toast(t('Added to memory verses'))))}
+        />
+        <Action icon={Icons.prayer} label={t('Pray')} onPress={() => navigate(`/prayer-edit?ranges=${encoded}` as Href)} />
+        {single && (
+          <Action icon={Icons.image} label={t('Image')} onPress={() => navigate(`/verse-image?ranges=${encoded}&version=${versionId}` as Href)} />
+        )}
+        <Action
+          icon={Icons.print}
+          label={t('Print')}
+          onPress={() =>
+            run(async () => {
+              const list = await verses();
+              const body = formatVerses(list, reference, versionName, { ...settings.copy.get(), lines: true, reference: 'none' });
+              if (!(await printHtml(printPage(`${reference} (${versionName})`, body.split('\n'))))) {
+                toast(t('Printing is not available on this device'));
+              }
+            })
+          }
+        />
       </View>
     </View>
   );
@@ -935,13 +1239,15 @@ function Action({ icon, label, onPress }: { icon: (typeof Icons)[keyof typeof Ic
   return (
     <Pressable
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={label}
       style={({ pressed, hovered }: Interaction) => [
         styles.action,
         hovered && { backgroundColor: theme.backgroundSelected },
         pressed && { opacity: 0.5 },
       ]}>
       <Icon name={icon} size={22} color={theme.tint} />
-      <ThemedText type="small" style={styles.actionLabel}>
+      <ThemedText type="small" numberOfLines={1} style={styles.actionLabel}>
         {label}
       </ThemedText>
     </Pressable>
@@ -980,6 +1286,7 @@ const styles = StyleSheet.create({
   heading: { fontWeight: '700', textAlign: 'center', marginTop: Spacing.three, marginBottom: Spacing.two },
   verse: { paddingVertical: 2, paddingHorizontal: Spacing.one, borderLeftWidth: 3, borderLeftColor: 'transparent', borderRadius: 4 },
   paragraph: { marginTop: Spacing.two },
+  verseLine: { marginTop: Spacing.one },
   splitRow: {
     paddingVertical: Spacing.two,
     borderLeftWidth: 3,
@@ -1040,7 +1347,7 @@ const styles = StyleSheet.create({
   handle: { width: 10, height: 44, borderRadius: 5, borderWidth: 1.5 },
   optionsPopover: { left: Spacing.three, minWidth: 290 },
   morePopover: { right: Spacing.two },
-  themeRow: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two },
+  themeRow: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, gap: Spacing.one },
   stepper: { flexDirection: 'row', alignItems: 'center', gap: Spacing.one },
   stepperValue: { minWidth: 40, textAlign: 'center', fontVariant: ['tabular-nums'] },
   bar: {
@@ -1059,7 +1366,39 @@ const styles = StyleSheet.create({
   colors: { flexDirection: 'row', gap: Spacing.two },
   swatch: { width: 30, height: 30, borderRadius: 15, borderWidth: StyleSheet.hairlineWidth },
   swatchClear: { alignItems: 'center', justifyContent: 'center' },
-  actions: { flexDirection: 'row', justifyContent: 'space-between' },
-  action: { alignItems: 'center', gap: 2, minWidth: 48, paddingVertical: Spacing.one, borderRadius: 10 },
+  actions: { flexDirection: 'row', flexWrap: 'wrap', rowGap: Spacing.one },
+  action: { alignItems: 'center', gap: 2, width: '16.66%', paddingVertical: Spacing.one, borderRadius: 10 },
   actionLabel: { fontSize: 11, lineHeight: 14 },
+  historyRow: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: Spacing.two, gap: Spacing.one },
+  historyLabel: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: Spacing.two, paddingVertical: Spacing.two, borderRadius: 10 },
+  player: {
+    position: 'absolute',
+    left: Spacing.three,
+    right: Spacing.three,
+    maxWidth: MaxContentWidth,
+    alignSelf: 'center',
+    minHeight: PLAYER_HEIGHT - Spacing.two,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+  },
+  playerTop: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingLeft: Spacing.one },
+  time: { fontVariant: ['tabular-nums'] },
+  progressTouch: { paddingVertical: Spacing.one },
+  progressTrack: { height: 3, borderRadius: 2, overflow: 'hidden' },
+  progressFill: { height: 3 },
+  playerControls: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  playerChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 2,
+    minWidth: 44,
+    justifyContent: 'center',
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one,
+    borderRadius: 999,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
 });

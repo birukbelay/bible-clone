@@ -190,6 +190,20 @@ export function bibleDb(versionId: string) {
   });
 }
 
+/** Downloads the version's .db file (to pass it to another device). */
+export async function shareVersion(versionId: string) {
+  const bytes = await (await bibleDb(versionId)).serializeAsync();
+  const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: 'application/x-sqlite3' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `${versionId}.db`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+  return true;
+}
+
 export function strongsDb() {
   return open(':strongs', async () => fetchBytes(BASE + (await loadManifest()).strongs.file));
 }
@@ -377,6 +391,8 @@ export type CatalogEntry = {
   size?: number;
   built_at?: number;
   description?: string;
+  /** audio Bible of the version: URL templates, see docs/fyn-rn-data.md section 7 */
+  audio?: { url_template?: string; timings?: string };
 };
 
 function resolveUrl(url: string, base: string) {
@@ -393,7 +409,25 @@ export async function fetchCatalog(url: string): Promise<CatalogEntry[]> {
   if (!Array.isArray(list)) throw new Error('Catalog: expected a "versions" list');
   return list
     .filter((e): e is CatalogEntry => typeof e?.id === 'string' && typeof e?.url === 'string')
-    .map((e) => ({ ...e, name: e.name || e.id, url: resolveUrl(e.url, url) }));
+    .map((e) => ({
+      ...e,
+      name: e.name || e.id,
+      url: resolveUrl(e.url, url),
+      audio: e.audio?.url_template
+        ? {
+            url_template: resolveUrl(e.audio.url_template, url),
+            timings: e.audio.timings ? resolveUrl(e.audio.timings, url) : undefined,
+          }
+        : undefined,
+    }));
+}
+
+/** Keeps the catalog's audio Bible template of a version, unless the user set their own. */
+function rememberAudio(entry: CatalogEntry) {
+  const template = entry.audio?.url_template;
+  const sources = settings.audioSources.get();
+  if (!template || sources[entry.id]?.template) return;
+  settings.audioSources.set({ ...sources, [entry.id]: { template, timings: entry.audio?.timings } });
 }
 
 export async function downloadVersion(entry: CatalogEntry) {
@@ -402,6 +436,7 @@ export async function downloadVersion(entry: CatalogEntry) {
   aborts.set(entry.id, controller);
   const setProgress = (p: number) => setState({ downloads: { ...state.downloads, [entry.id]: p } });
   setProgress(0);
+  rememberAudio(entry);
   try {
     const bytes = await fetchBytes(entry.url, controller.signal, (received, length) => {
       const total = length > 0 ? length : (entry.size ?? 0);

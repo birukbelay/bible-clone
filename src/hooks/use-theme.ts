@@ -5,10 +5,12 @@
 
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { settings, useSetting } from '@/settings';
 
+/** Colors of the theme chosen in Settings; sepia and black are a light and a dark scheme with their own palette. */
 export function useTheme() {
   const scheme = useColorScheme();
-  const theme = scheme === 'unspecified' ? 'light' : scheme;
-
-  return Colors[theme];
+  const [choice] = useSetting(settings.theme);
+  if (choice === 'sepia' || choice === 'black') return Colors[choice];
+  return Colors[scheme === 'dark' ? 'dark' : 'light'];
 }

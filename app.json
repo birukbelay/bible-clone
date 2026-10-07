@@ -46,7 +46,9 @@
           "enableFTS": true
         }
       ],
-      "./plugins/with-watermelondb.js"
+      "./plugins/with-watermelondb.js",
+      "expo-audio",
+      "expo-sharing"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -6,7 +6,7 @@ import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useT } from '@/i18n';
 
-import { Icons } from './icon';
+import { Icons, type IconName } from './icon';
 import { IconButton, type Interaction } from './ui';
 
 export const CHAPTER_BAR_HEIGHT = 60;
@@ -21,6 +21,9 @@ export function ChapterBar({
   onPrev,
   onNext,
   onTitle,
+  playIcon,
+  playLabel,
+  onPlayLongPress,
 }: {
   bottom: number;
   book: string;
@@ -28,6 +31,10 @@ export function ChapterBar({
   playing: boolean;
   onSettings: () => void;
   onPlay: () => void;
+  /** the play button's icon and label when it listens rather than scrolls */
+  playIcon?: IconName;
+  playLabel?: string;
+  onPlayLongPress?: () => void;
   onPrev: (() => void) | null;
   onNext: (() => void) | null;
   onTitle: () => void;
@@ -49,10 +56,11 @@ export function ChapterBar({
       ]}>
       <IconButton icon={Icons.settings} label={t('Reading options')} color={theme.textSecondary} onPress={onSettings} />
       <IconButton
-        icon={playing ? Icons.pause : Icons.play}
-        label={playing ? t('Stop scrolling') : t('Scroll automatically')}
+        icon={playIcon ?? (playing ? Icons.pause : Icons.play)}
+        label={playLabel ?? (playing ? t('Stop scrolling') : t('Scroll automatically'))}
         color={playing ? theme.tint : theme.textSecondary}
         onPress={onPlay}
+        onLongPress={onPlayLongPress}
       />
       <View style={[styles.separator, { backgroundColor: theme.border }]} />
       <IconButton icon={Icons.left} label={t('Previous chapter')} size={26} disabled={!onPrev} onPress={() => onPrev?.()} />

@@ -52,8 +52,40 @@ export const planTables = [
   }),
 ];
 
+/** Memory verses and the prayer list (schema version 3). Shared with migrations.ts. */
+export const memoryPrayerTables = [
+  tableSchema({
+    name: 'memory_verses',
+    columns: [
+      { name: 'ari', type: 'number', isIndexed: true },
+      { name: 'ari_end', type: 'number' },
+      /** version the verse is learned in; null = the version open in the reader */
+      { name: 'version_id', type: 'string', isOptional: true },
+      /** 0 = new; every remembered review moves it up one box (see src/memory.ts) */
+      { name: 'level', type: 'number' },
+      /** next review, local midnight in ms */
+      { name: 'next_due', type: 'number' },
+      { name: 'last_reviewed', type: 'number', isOptional: true },
+      ...timestamps,
+    ],
+  }),
+  tableSchema({
+    name: 'prayers',
+    columns: [
+      { name: 'title', type: 'string' },
+      { name: 'body', type: 'string', isOptional: true },
+      /** optional verse the prayer rests on */
+      { name: 'ari', type: 'number', isOptional: true },
+      { name: 'ari_end', type: 'number', isOptional: true },
+      /** ms; null = still praying */
+      { name: 'answered_at', type: 'number', isOptional: true },
+      ...timestamps,
+    ],
+  }),
+];
+
 export const schema = appSchema({
-  version: 2,
+  version: 3,
   tables: [
     tableSchema({
       name: 'bookmarks',
@@ -123,5 +155,6 @@ export const schema = appSchema({
       ],
     }),
     ...planTables,
+    ...memoryPrayerTables,
   ],
 });

@@ -1,14 +1,17 @@
-/** Go to a book and chapter. */
+/** Go to a book and chapter, or a typed reference ("jn 3 16", "ዮሐ 3፡16"). */
 import { router } from 'expo-router';
 import { Fragment, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
 import { bookOf, chapterOf, makeAri } from '@/bible/ari';
 import { SECTION_NAMES, SECTIONS, sectionOf } from '@/bible/canon';
+import { parseRef } from '@/bible/parse-ref';
 import { getBooks, useAsync, type Book } from '@/bible/queries';
+import { formatRef } from '@/bible/reference';
 import { useCurrentVersion } from '@/bible/versions';
 import { ThemedText } from '@/components/themed-text';
-import { Field, SectionHeader } from '@/components/ui';
+import { Icon, Icons } from '@/components/icon';
+import { Field, Row, SectionHeader } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
 import { useT } from '@/i18n';
@@ -63,6 +66,14 @@ export default function PassageScreen() {
     );
   }
 
+  // a reference with a chapter ("jn 3", "john 3:16") goes straight there
+  const ref = /\d/.test(filter.replace(/^\s*\d/, '')) || /[፩-፼]/.test(filter) ? parseRef(filter, books) : null;
+  const goToRef = () => {
+    if (!ref) return false;
+    settings.position.set(ref.ari);
+    router.back();
+    return true;
+  };
   const q = filter.trim().toLowerCase();
   const shown = books?.filter((b) => !q || b.name.toLowerCase().includes(q) || b.abbr.toLowerCase().startsWith(q));
   const pick = (b: Book) => (b.chapters === 1 ? go(b, 1) : setBook(b));
@@ -98,12 +109,20 @@ export default function PassageScreen() {
         <Field
           value={filter}
           onChangeText={setFilter}
-          placeholder={t('Find a book')}
           autoCorrect={false}
           returnKeyType="go"
-          onSubmitEditing={() => shown?.length === 1 && pick(shown[0])}
+          placeholder={t('Find a book or type a reference')}
+          onSubmitEditing={() => goToRef() || (shown?.length === 1 && pick(shown[0]))}
         />
       </View>
+      {ref && (
+        <Row
+          left={<Icon name={Icons.goTo} size={20} color={theme.tint} />}
+          title={t('Open {ref}', { ref: formatRef(books, ref.ari, ref.ariEnd) })}
+          chevron
+          onPress={goToRef}
+        />
+      )}
       {SECTIONS.map((which) => (
         <Fragment key={which}>{section(t(SECTION_NAMES[which].title), shown?.filter((b) => sectionOf(b.book) === which))}</Fragment>
       ))}

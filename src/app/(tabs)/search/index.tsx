@@ -1,25 +1,33 @@
-/** Search: full-text search of the current version, or the Strong's dictionary. */
+/**
+ * Search: full-text search of the current version, or the Strong's dictionary. A typed reference
+ * ("jn 3 16") offers to open it; results can be narrowed to one book; recent searches are kept.
+ */
 import { router, Stack } from 'expo-router';
-import { useState } from 'react';
-import { FlatList, Platform, StyleSheet, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { FlatList, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
-import { BOOK_COUNT } from '@/bible/ari';
-import { getBooks, searchText, useAsync, type SearchScope } from '@/bible/queries';
+import { BOOK_COUNT, bookOf } from '@/bible/ari';
+import { parseRef } from '@/bible/parse-ref';
+import { bookName, getBooks, searchText, useAsync, type SearchScope } from '@/bible/queries';
+import { formatRef, openInReader } from '@/bible/reference';
 import { searchStrongs } from '@/bible/strongs';
 import { useCurrentVersion } from '@/bible/versions';
 import { ThemedText } from '@/components/themed-text';
-import { Empty, Field, Row, Segmented } from '@/components/ui';
+import { Icon, Icons } from '@/components/icon';
+import { Chip, Empty, Field, IconButton, Row, Segmented } from '@/components/ui';
 import { VerseList, VerseListHeader, type VerseListItem } from '@/components/verse-list';
 import { Spacing } from '@/constants/theme';
 import { useDebounced } from '@/hooks/use-debounced';
 import { useTabBottomInset } from '@/hooks/use-tab-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { useT } from '@/i18n';
+import { settings, useSetting } from '@/settings';
 
 type Mode = 'text' | 'strongs';
 type Scope = 'all' | 'ot' | 'nt' | 'dc';
 
 const LIMIT = 500;
+const HISTORY = 15;
 /** browsers get a plain field: their header search bar hides behind a button */
 const NATIVE_SEARCH_BAR = Platform.OS !== 'web';
 
@@ -42,6 +50,23 @@ export default function SearchScreen() {
     const rows = await searchText(versionId, query, where satisfies SearchScope, LIMIT);
     return rows.map<VerseListItem>((v) => ({ key: String(v.ari), ari: v.ari, ariEnd: v.ari_end }));
   }, [mode, query, where, versionId]);
+
+  // narrowed to one book by its chip; a new search shows all again
+  const [bookFilter, setBookFilter] = useState<{ query: string; book: number } | null>(null);
+  const filterBook = bookFilter?.query === query ? bookFilter.book : null;
+  const counts = new Map<number, number>();
+  for (const v of verses ?? []) counts.set(bookOf(v.ari), (counts.get(bookOf(v.ari)) ?? 0) + 1);
+  const shown = filterBook == null ? verses : verses?.filter((v) => bookOf(v.ari) === filterBook);
+
+  const [history, setHistory] = useSetting(settings.searchHistory);
+  const remember = (q: string) => setHistory([q, ...settings.searchHistory.get().filter((h) => h !== q)].slice(0, HISTORY));
+  // searches that found something are kept
+  useEffect(() => {
+    if (mode === 'text' && query && verses?.length) remember(query);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verses]);
+
+  const ref = mode === 'text' && input.trim() ? parseRef(input, books) : null;
 
   const { data: entries } = useAsync(
     async () => (mode === 'strongs' && query ? searchStrongs(query, 80) : undefined),
@@ -83,8 +108,49 @@ export default function SearchScreen() {
           onChange={setScope}
         />
       )}
+      {ref && (
+        <Row
+          left={<Icon name={Icons.goTo} size={20} color={theme.tint} />}
+          title={t('Open {ref}', { ref: formatRef(books, ref.ari, ref.ariEnd) })}
+          chevron
+          onPress={() => {
+            remember(input.trim());
+            openInReader(ref.ari);
+          }}
+        />
+      )}
+      {mode === 'text' && query && counts.size > 1 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+          <Chip label={t('All ({count})', { count: verses?.length ?? 0 })} selected={filterBook == null} onPress={() => setBookFilter(null)} />
+          {[...counts].map(([book, count]) => (
+            <Chip
+              key={book}
+              label={`${bookName(books, book << 16, true)} (${count})`}
+              selected={filterBook === book}
+              onPress={() => setBookFilter(filterBook === book ? null : { query, book })}
+            />
+          ))}
+        </ScrollView>
+      ) : null}
     </View>
   );
+
+  const recent =
+    !input.trim() && history.length ? (
+      <View style={styles.recent}>
+        <View style={styles.recentHeader}>
+          <ThemedText type="smallBold" themeColor="textSecondary" style={styles.fill}>
+            {t('Recent searches')}
+          </ThemedText>
+          <IconButton icon={Icons.trash} label={t('Clear recent searches')} size={18} color={theme.textSecondary} onPress={() => setHistory([])} />
+        </View>
+        <View style={styles.wrap}>
+          {history.map((h) => (
+            <Chip key={h} label={h} onPress={() => setInput(h)} onLongPress={() => setHistory(history.filter((x) => x !== h))} />
+          ))}
+        </View>
+      </View>
+    ) : null;
 
   return (
     <>
@@ -102,7 +168,7 @@ export default function SearchScreen() {
       />
       {mode === 'text' ? (
         <VerseList
-          items={query ? verses : []}
+          items={query ? shown : []}
           bottomInset={bottomInset}
           header={
             <VerseListHeader>
@@ -112,6 +178,7 @@ export default function SearchScreen() {
                   {textLoading ? t('Searching…') : verses.length >= LIMIT ? t('First {count} verses', { count: LIMIT }) : t('{count} verses', { count: verses.length })}
                 </ThemedText>
               ) : null}
+              {recent}
             </VerseListHeader>
           }
           empty={
@@ -165,4 +232,9 @@ export default function SearchScreen() {
 
 const styles = StyleSheet.create({
   controls: { gap: Spacing.two },
+  chips: { gap: Spacing.two },
+  recent: { gap: Spacing.two, paddingTop: Spacing.two },
+  recentHeader: { flexDirection: 'row', alignItems: 'center' },
+  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  fill: { flex: 1 },
 });

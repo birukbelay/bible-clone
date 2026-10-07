@@ -10,7 +10,20 @@ import type { VerseRange } from '@/bible/reference';
 import { TagColors } from '@/constants/theme';
 
 import { database } from './index';
-import { Bookmark, Highlight, Note, Plan, PlanReading, Tag, Topic, TopicStrong, VerseTag, type TopicMode } from './models';
+import {
+  Bookmark,
+  Highlight,
+  MemoryVerse,
+  Note,
+  Plan,
+  PlanReading,
+  Prayer,
+  Tag,
+  Topic,
+  TopicStrong,
+  VerseTag,
+  type TopicMode,
+} from './models';
 
 const bookmarks = () => database.get<Bookmark>('bookmarks');
 const notes = () => database.get<Note>('notes');
@@ -21,6 +34,8 @@ const topics = () => database.get<Topic>('topics');
 const topicStrongs = () => database.get<TopicStrong>('topic_strongs');
 const plans = () => database.get<Plan>('plans');
 const planReadings = () => database.get<PlanReading>('plan_readings');
+const memoryVerses = () => database.get<MemoryVerse>('memory_verses');
+const prayers = () => database.get<Prayer>('prayers');
 
 /** Records whose range overlaps [from, to]. */
 export const overlapping = (from: number, to: number) => [Q.where('ari', Q.lte(to)), Q.where('ari_end', Q.gte(from))];
@@ -339,4 +354,88 @@ export function setReadAll(readings: PlanReading[], read: boolean) {
         .map((r) => r.prepareUpdate((x) => (x.readAt = read ? now : null))),
     ),
   );
+}
+
+// ---- memory verses ----------------------------------------------------------------------------
+
+/** Days until the next review for each level (Leitner boxes); the last one repeats. */
+export const MEMORY_INTERVALS = [1, 2, 4, 7, 14, 30, 60, 120];
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** Local midnight `days` days after the day of `time` (DST-safe). */
+export function addDays(time: number, days: number) {
+  return startOfDay(startOfDay(time) + days * DAY + DAY / 2);
+}
+
+/** Adds the ranges to the memory verses (due today); ranges already there are kept as they are. */
+export function addMemoryVerses(ranges: VerseRange[], versionId: string | null) {
+  return database.write(async () => {
+    const today = startOfDay(Date.now());
+    for (const r of ranges) {
+      const existing = await memoryVerses().query(Q.where('ari', r.ari), Q.where('ari_end', r.ariEnd)).fetchCount();
+      if (existing) continue;
+      await memoryVerses().create((m) => {
+        m.ari = r.ari;
+        m.ariEnd = r.ariEnd;
+        m.versionId = versionId;
+        m.level = 0;
+        m.nextDue = today;
+        m.lastReviewed = null;
+      });
+    }
+  });
+}
+
+/** Records a review: remembered moves the verse up one box, forgotten sends it back to the first. */
+export function reviewMemoryVerse(verse: MemoryVerse, remembered: boolean) {
+  const now = Date.now();
+  const level = remembered ? Math.min(verse.level + 1, MEMORY_INTERVALS.length) : 0;
+  const days = remembered ? MEMORY_INTERVALS[Math.min(level, MEMORY_INTERVALS.length) - 1] : 1;
+  return database.write(() =>
+    verse.update((m) => {
+      m.level = level;
+      m.lastReviewed = now;
+      m.nextDue = addDays(now, days);
+    }),
+  );
+}
+
+export function deleteMemoryVerse(verse: MemoryVerse) {
+  return database.write(() => verse.markAsDeleted());
+}
+
+// ---- prayer list ------------------------------------------------------------------------------
+
+export type PrayerInput = { title: string; body?: string | null; range?: VerseRange | null };
+
+export function savePrayer(prayer: Prayer | null, input: PrayerInput) {
+  const title = input.title.trim();
+  if (!title) throw new Error('The prayer has no title');
+  const body = input.body?.trim() || null;
+  const apply = (p: Prayer) => {
+    p.title = title;
+    p.body = body;
+    if (input.range !== undefined) {
+      p.ari = input.range?.ari ?? null;
+      p.ariEnd = input.range?.ariEnd ?? null;
+    }
+  };
+  return database.write(async () => {
+    if (prayer) return prayer.update(apply);
+    return prayers().create((p) => {
+      p.ari = null;
+      p.ariEnd = null;
+      p.answeredAt = null;
+      apply(p);
+    });
+  });
+}
+
+export function setPrayerAnswered(prayer: Prayer, answered: boolean) {
+  return database.write(() => prayer.update((p) => (p.answeredAt = answered ? Date.now() : null)));
+}
+
+export function deletePrayer(prayer: Prayer) {
+  return database.write(() => prayer.markAsDeleted());
 }

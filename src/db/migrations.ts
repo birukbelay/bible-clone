@@ -7,7 +7,7 @@
  */
 import { createTable, schemaMigrations } from '@nozbe/watermelondb/Schema/migrations';
 
-import { planTables } from './schema';
+import { memoryPrayerTables, planTables } from './schema';
 
 export const migrations = schemaMigrations({
   migrations: [
@@ -15,6 +15,11 @@ export const migrations = schemaMigrations({
     {
       toVersion: 2,
       steps: planTables.map((t) => createTable({ name: t.name, columns: t.columnArray })),
+    },
+    // memory verses and prayer list. Same rule: freeze their version-3 columns here before changing them.
+    {
+      toVersion: 3,
+      steps: memoryPrayerTables.map((t) => createTable({ name: t.name, columns: t.columnArray })),
     },
   ],
 });

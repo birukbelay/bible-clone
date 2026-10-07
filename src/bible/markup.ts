@@ -4,10 +4,14 @@
  *   @8        line break           @0 … @4   line break + indent level (poetry)
  *   @^        paragraph            @[G25@]   Strong's number for the preceding word(s)
  *   @/, @<…@> ignored
+ *
+ * Text in [square brackets] or {braces}, brackets included, is marked `aside` (shown smaller and
+ * fainter). A bracket left open runs to the end of the verse; a verse that closes a bracket it
+ * didn't open (continued from the verse before) is an aside up to there.
  */
 
 export type Span =
-  | { kind: 'text'; text: string; red: boolean; italic: boolean }
+  | { kind: 'text'; text: string; red: boolean; italic: boolean; aside: boolean }
   | { kind: 'strong'; number: string }
   | { kind: 'break'; indent: number; paragraph: boolean };
 
@@ -19,14 +23,37 @@ export function parseVerse(text: string): Span[] {
   let italic = false;
   let last = 0;
   let leading = true;
+  // brackets nest; the first bracket being a closing one means the verse starts inside one
+  let depth = /^[^[\]{}]*[\]}]/.test(text.replace(TOKEN, '')) ? 1 : 0;
 
+  const add = (s: string, aside: boolean) => {
+    if (!s) return;
+    const prev = spans[spans.length - 1];
+    if (prev?.kind === 'text' && prev.red === red && prev.italic === italic && prev.aside === aside) prev.text += s;
+    else spans.push({ kind: 'text', text: s, red, italic, aside });
+  };
   const pushText = (s: string) => {
     if (!s) return;
     if (leading && !s.trim()) return;
     leading = false;
-    const prev = spans[spans.length - 1];
-    if (prev?.kind === 'text' && prev.red === red && prev.italic === italic) prev.text += s;
-    else spans.push({ kind: 'text', text: s, red, italic });
+    let start = 0;
+    for (let i = 0; i < s.length; i++) {
+      const c = s[i];
+      if (c === '[' || c === '{') {
+        if (depth === 0) {
+          add(s.slice(start, i), false);
+          start = i;
+        }
+        depth++;
+      } else if ((c === ']' || c === '}') && depth > 0) {
+        depth--;
+        if (depth === 0) {
+          add(s.slice(start, i + 1), true);
+          start = i + 1;
+        }
+      }
+    }
+    add(s.slice(start), depth > 0);
   };
 
   for (const m of text.matchAll(TOKEN)) {

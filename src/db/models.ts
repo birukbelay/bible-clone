@@ -104,4 +104,39 @@ export class PlanReading extends VerseRecord {
   @relation('plans', 'plan_id') plan!: Relation<Plan>;
 }
 
-export const modelClasses = [Bookmark, Note, Highlight, Tag, VerseTag, Topic, TopicStrong, Plan, PlanReading];
+/** A verse being memorized (Leitner boxes: the level sets the days until the next review). */
+export class MemoryVerse extends VerseRecord {
+  static table = 'memory_verses';
+
+  @field('version_id') versionId!: string | null;
+  @field('level') level!: number;
+  /** local midnight, ms */
+  @field('next_due') nextDue!: number;
+  @field('last_reviewed') lastReviewed!: number | null;
+}
+
+/** A prayer request, optionally resting on a verse. */
+export class Prayer extends SyncedRecord {
+  static table = 'prayers';
+
+  @text('title') title!: string;
+  @text('body') body!: string | null;
+  @field('ari') ari!: number | null;
+  @field('ari_end') ariEnd!: number | null;
+  /** ms, null = not answered yet */
+  @field('answered_at') answeredAt!: number | null;
+}
+
+export const modelClasses = [
+  Bookmark,
+  Note,
+  Highlight,
+  Tag,
+  VerseTag,
+  Topic,
+  TopicStrong,
+  Plan,
+  PlanReading,
+  MemoryVerse,
+  Prayer,
+];

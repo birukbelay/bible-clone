@@ -13,6 +13,7 @@ import { Button } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { database, type Plan } from '@/db';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useTheme } from '@/hooks/use-theme';
 import { useLanguage, useT } from '@/i18n';
 import { setupReminders, syncReminders } from '@/reminders';
 import { settings, useSetting } from '@/settings';
@@ -24,7 +25,8 @@ SplashScreen.preventAutoHideAsync();
  * Appearance.setColorScheme; its useColorScheme reads the setting instead.
  */
 function applyTheme(theme: ReturnType<typeof settings.theme.get>) {
-  if (Platform.OS !== 'web') Appearance.setColorScheme(theme === 'system' ? 'unspecified' : theme);
+  if (Platform.OS === 'web') return;
+  Appearance.setColorScheme(theme === 'system' ? 'unspecified' : theme === 'sepia' ? 'light' : theme === 'black' ? 'dark' : theme);
 }
 applyTheme(settings.theme.get()); // before the first render, so there is no flash
 
@@ -43,6 +45,13 @@ export default function RootLayout() {
   const [theme] = useSetting(settings.theme);
   useEffect(() => applyTheme(theme), [theme]);
   const colorScheme = useColorScheme();
+  const palette = useTheme();
+  const base = colorScheme === 'dark' ? DarkTheme : DefaultTheme;
+  // headers and screens follow the palette (sepia, black) too
+  const navTheme = {
+    ...base,
+    colors: { ...base.colors, background: palette.background, card: palette.background, text: palette.text, border: palette.border, primary: palette.tint },
+  };
   const [state, setState] = useState<'loading' | 'ready' | Error>('loading');
 
   const load = () =>
@@ -76,7 +85,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={styles.fill}>
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <ThemeProvider value={navTheme}>
       <StatusBar style={colorScheme === 'dark' ? 'light' : 'dark'} />
       <DatabaseProvider database={database}>
         {state === 'ready' ? (
@@ -95,6 +104,17 @@ export default function RootLayout() {
             <Stack.Screen name="topic-edit" options={{ ...sheet, title: t('Topic') }} />
             <Stack.Screen name="topic-picker" options={{ ...sheet, title: t('Add to topic') }} />
             <Stack.Screen name="strongs-search" options={{ ...sheet, sheetAllowedDetents: [1], title: t("Add Strong's words") }} />
+            <Stack.Screen name="compare" options={{ title: t('Compare versions') }} />
+            <Stack.Screen name="history" options={{ title: t('History') }} />
+            <Stack.Screen name="progress" options={{ title: t('Reading progress') }} />
+            <Stack.Screen name="lectionary" options={{ title: t('Daily readings') }} />
+            <Stack.Screen name="memory" options={{ title: t('Memory verses') }} />
+            <Stack.Screen name="prayers" options={{ title: t('Prayer list') }} />
+            <Stack.Screen name="audio" options={{ title: t('Audio Bible') }} />
+            <Stack.Screen name="backup" options={{ title: t('Backup & export') }} />
+            <Stack.Screen name="prayer-edit" options={{ ...sheet, sheetAllowedDetents: [1], title: t('Prayer') }} />
+            <Stack.Screen name="verse-image" options={{ ...sheet, sheetAllowedDetents: [1], title: t('Verse image') }} />
+            <Stack.Screen name="[...ref]" options={{ title: '' }} />
           </Stack>
         ) : state === 'loading' ? null : (
           <View style={styles.error}>

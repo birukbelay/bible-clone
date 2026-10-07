@@ -251,3 +251,99 @@ steps. The UI and data layer don't change.
 - Decorators: babel-preset-expo already includes the legacy decorators transform;
   `tsconfig.json` has `experimentalDecorators` and `useDefineForClassFields: false`.
 - A development build is needed (`bunx expo run:android`); Expo Go doesn't include WatermelonDB.
+
+## 7. Audio Bible, backups, links
+
+Nothing here uses an account or a third-party service: audio comes from any web server you
+choose or from files on the device, and backups are files the user keeps.
+
+### Audio Bible (per version)
+
+A chapter's audio comes from, first match wins (`src/bible/audio.ts`):
+
+1. `<documents>/audio/<versionId>/<BOOK>_<chapter>.mp3` (downloaded or imported, e.g. `JHN_3.mp3`);
+2. the version's URL template (`settings.audioSources[versionId].template`), streamed;
+3. otherwise the chapter is read aloud by the phone's voice (expo-speech / the browser's
+   speechSynthesis); without that, the play button only scrolls the text.
+
+The template is set in Audio Bible (drawer → Audio, or Settings → More) or comes from the
+catalog entry:
+
+```json
+{ "id": "AMH2000", "…": "…",
+  "audio": { "url_template": "audio/AMH2000/{BOOK}_{chapter3}.mp3",
+             "timings": "audio/AMH2000/{BOOK}_{chapter3}.json" } }
+```
+
+Relative URLs are resolved against the catalog URL. A template the user typed is never
+overwritten by the catalog.
+
+| placeholder | John 3 | |
+|---|---|---|
+| `{BOOK}` | `JHN` | USFM code |
+| `{book}` | `43` | book number 1-66 |
+| `{book0}` | `42` | book number 0-65 |
+| `{book2}` | `43` (Genesis `01`) | book number, two digits |
+| `{chapter}` | `3` | |
+| `{chapter2}` | `03` | |
+| `{chapter3}` | `003` | |
+
+A template must start with `http://` or `https://` and contain a chapter placeholder.
+
+**Verse timings** (optional) let the reader follow the audio verse by verse: a JSON array, in
+seconds from the start of the chapter, next to the audio (`JHN_3.json`) or from the `timings`
+template:
+
+```json
+[{ "verse": 1, "start": 0.0 }, { "verse": 2, "start": 6.4 }]
+```
+
+**Importing files** (phone app only): pick any number of `.mp3` / `.m4a` / `.aac` / `.ogg` and
+`.json` files. The name must say the book and chapter: `JHN_3.mp3`, `JHN03.mp3`, `JHN 3.mp3`,
+`43_3.mp3` (book number 1-66). Other names are skipped and listed.
+
+On the web, audio streams from the template only (the server must allow cross-origin requests
+for timings).
+
+### Backup file
+
+Backup & export writes `fyn-bible-backup-<date>.json`:
+
+```json
+{
+  "app": "fyn-bible",
+  "format": 1,
+  "schemaVersion": 1,
+  "exportedAt": 1791161258409,
+  "tables": { "notes": [{ "id": "…", "ari": 2818832, "ari_end": 2818832, "body": "…", "created_at": 0, "updated_at": 0 }], "…": [] },
+  "settings": { "theme": "sepia", "fontSize": 18, "history": [], "audioSources": {}, "…": "…" }
+}
+```
+
+`tables` holds the raw rows of every table in `src/db/schema.ts` (section 4, plus `plans`,
+`plan_readings`, `memory_verses`, `prayers`) without WatermelonDB's `_status` / `_changed`.
+`settings` holds the keys in `SETTING_KEYS` (`src/backup.ts`); the reading position and folders
+stay on the device. A file with a newer `format` or `schemaVersion` is refused. Restore either
+**replaces** all user data or **merges** (adds rows whose `id` is not on the device).
+
+### Links to a passage
+
+`app.json` has the scheme `fynbible`; the web build serves every path from `index.html`
+(`vercel.json`). `src/app/[...ref].tsx` opens the reader at:
+
+- `fynbible://JHN.3.16`, `fynbible://JHN.3.16-18`
+- `https://<site>/JHN.3.16`, `/John/3/16`, `/John+3:16`, `/ዮሐንስ/3/16`
+- `?v=<version id>` also switches to that version if it is installed.
+
+Book names are matched in the current version's language first, then English names and USFM
+codes. Anything else shows "Page not found".
+
+### Home-screen widget (not built)
+
+A "verse of the day" widget needs native code (Android `AppWidgetProvider`, iOS WidgetKit
+extension) and so a config plugin. A future version could add it this way:
+
+- the app writes today's verse (`src/bible/verse-of-day.ts`) to shared storage on start
+  (Android `SharedPreferences`, iOS an App Group `UserDefaults`);
+- the widget only reads that text and opens `fynbible://<ref>` when tapped;
+- no network, no background job.

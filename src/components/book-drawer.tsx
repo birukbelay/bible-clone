@@ -39,6 +39,10 @@ const SHORTCUTS: { label: string; icon: IconName; href: Href }[] = [
   { label: 'Topics', icon: Icons.topic, href: '/topics' },
   { label: 'Plans', icon: Icons.plan, href: '/plans' },
   { label: 'Versions', icon: Icons.translate, href: '/version-picker' },
+  { label: 'Today', icon: Icons.calendar, href: '/lectionary' as Href },
+  { label: 'Memory', icon: Icons.memory, href: '/memory' as Href },
+  { label: 'Prayers', icon: Icons.prayer, href: '/prayers' as Href },
+  { label: 'Audio', icon: Icons.headphones, href: '/audio' as Href },
 ];
 
 export function BookDrawer({
@@ -357,11 +361,13 @@ const styles = StyleSheet.create({
   votdActionHovered: { backgroundColor: 'rgba(255,255,255,0.3)' },
   shortcuts: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    rowGap: Spacing.one,
     paddingVertical: Spacing.two + 2,
     paddingHorizontal: Spacing.one,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
-  shortcut: { flex: 1, alignItems: 'center', gap: Spacing.one, paddingVertical: Spacing.one, borderRadius: 10 },
+  shortcut: { width: '20%', alignItems: 'center', gap: Spacing.one, paddingVertical: Spacing.one, borderRadius: 10 },
   shortcutLabel: { fontSize: 11, lineHeight: 14 },
   lists: { flex: 1, flexDirection: 'row' },
   bookRow: {

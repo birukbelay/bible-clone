@@ -24,6 +24,7 @@ import {
 import { useSyncExternalStore } from 'react';
 import { Platform } from 'react-native';
 
+import { shareFile } from '@/native/files';
 import { settings } from '@/settings';
 
 import { BUNDLED } from './bundled';
@@ -73,7 +74,20 @@ async function closeFile(dir: string, name: string) {
   if (db) await db.then((d) => d.closeAsync()).catch(() => {});
 }
 
-export const bibleDb = (versionId: string) => openFile(BIBLES_PATH, `${versionId}.db`);
+/** Connection to an installed version. Rejects for an unknown id (opening would create an empty file). */
+export function bibleDb(versionId: string) {
+  const name = `${versionId}.db`;
+  if (!versionId || !new File(biblesDir(), name).exists) {
+    return Promise.reject(new Error(`version "${versionId}" is not installed`));
+  }
+  return openFile(BIBLES_PATH, name);
+}
+/** Opens the share sheet with the version's .db file (to pass it to another phone). False when not possible. */
+export async function shareVersion(versionId: string) {
+  const file = new File(biblesDir(), `${versionId}.db`);
+  if (!file.exists) return false;
+  return shareFile(file.uri, 'application/x-sqlite3', `${versionId}.db`);
+}
 export const strongsDb = () => openFile(SQLITE_PATH, 'strongs.db');
 
 async function readInfo(db: SQLiteDatabase) {
@@ -180,6 +194,12 @@ export async function refreshVersions() {
     .filter((f): f is File => f instanceof File && f.name.endsWith('.db'));
   const versions: BibleVersion[] = [];
   for (const file of files) {
+    // left by older builds that opened a version with an empty id
+    if (file.name === '.db') {
+      await closeFile(BIBLES_PATH, file.name);
+      file.delete();
+      continue;
+    }
     try {
       const v = toVersion(await readInfo(await openFile(BIBLES_PATH, file.name)));
       if (v && file.name === `${v.id}.db`) versions.push(v);
@@ -424,6 +444,8 @@ export type CatalogEntry = {
   size?: number;
   built_at?: number;
   description?: string;
+  /** audio Bible of the version: URL templates, see docs/fyn-rn-data.md section 7 */
+  audio?: { url_template?: string; timings?: string };
 };
 
 function resolveUrl(url: string, base: string) {
@@ -440,7 +462,25 @@ export async function fetchCatalog(url: string): Promise<CatalogEntry[]> {
   if (!Array.isArray(list)) throw new Error('Catalog: expected a "versions" list');
   return list
     .filter((e): e is CatalogEntry => typeof e?.id === 'string' && typeof e?.url === 'string')
-    .map((e) => ({ ...e, name: e.name || e.id, url: resolveUrl(e.url, url) }));
+    .map((e) => ({
+      ...e,
+      name: e.name || e.id,
+      url: resolveUrl(e.url, url),
+      audio: e.audio?.url_template
+        ? {
+            url_template: resolveUrl(e.audio.url_template, url),
+            timings: e.audio.timings ? resolveUrl(e.audio.timings, url) : undefined,
+          }
+        : undefined,
+    }));
+}
+
+/** Keeps the catalog's audio Bible template of a version, unless the user set their own. */
+function rememberAudio(entry: CatalogEntry) {
+  const template = entry.audio?.url_template;
+  const sources = settings.audioSources.get();
+  if (!template || sources[entry.id]?.template) return;
+  settings.audioSources.set({ ...sources, [entry.id]: { template, timings: entry.audio?.timings } });
 }
 
 export async function downloadVersion(entry: CatalogEntry) {
@@ -449,6 +489,7 @@ export async function downloadVersion(entry: CatalogEntry) {
   aborts.set(entry.id, controller);
   const setProgress = (p: number) => setState({ downloads: { ...state.downloads, [entry.id]: p } });
   setProgress(0);
+  rememberAudio(entry);
   const part = new File(Paths.cache, `${entry.id}.db.part`);
   try {
     await File.downloadFileAsync(entry.url, part, {

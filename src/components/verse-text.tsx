@@ -1,9 +1,11 @@
 /** Renders verse markup (see src/bible/markup.ts) as nested <Text>. */
 import { Fragment, type ReactNode } from 'react';
-import { StyleSheet, Text, type StyleProp, type TextStyle } from 'react-native';
+import { StyleSheet, Text, type AccessibilityRole, type StyleProp, type TextStyle } from 'react-native';
 
 import { parseVerse } from '@/bible/markup';
+import { Fonts } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { settings, useSetting } from '@/settings';
 
 export type VerseTextProps = {
   text: string;
@@ -23,6 +25,10 @@ export type VerseTextProps = {
   style?: StyleProp<TextStyle>;
   /** inline content after the text, e.g. a tappable "note" marker */
   trailing?: ReactNode;
+  /** line height as a multiple of the font size */
+  lineSpacing?: number;
+  fontFamily?: 'sans' | 'serif' | 'mono';
+  accessibilityRole?: AccessibilityRole;
 };
 
 export function VerseText({
@@ -38,10 +44,26 @@ export function VerseText({
   numberOfLines,
   style,
   trailing,
+  lineSpacing = 1.55,
+  fontFamily,
+  accessibilityRole,
 }: VerseTextProps) {
   const theme = useTheme();
   const spans = parseVerse(text);
-  const lineHeight = Math.round(fontSize * 1.55);
+  const lineHeight = Math.round(fontSize * lineSpacing);
+  const family = fontFamily && fontFamily !== 'sans' ? Fonts[fontFamily] : undefined;
+  // [bracketed] and {braced} text, brackets included: smaller than the verse and faded, sizes and
+  // opacity from the reading settings
+  const [asideSize] = useSetting(settings.asideSize);
+  const [asideOpacity] = useSetting(settings.asideOpacity);
+  const asideFont = fontSize * Math.min(asideSize, 95) / 100;
+  const aside = { fontSize: asideFont, color: withAlpha(theme.text, asideOpacity) };
+  const asideRed = { fontSize: asideFont, color: withAlpha(theme.redLetter, asideOpacity) };
+  const textStyle = (s: { red: boolean; italic: boolean; aside: boolean }) => [
+    s.red && redLetters && { color: theme.redLetter },
+    s.aside && (s.red && redLetters ? asideRed : aside),
+    s.italic && styles.italic,
+  ];
 
   // a word is tagged by the Strong's markers right after it
   const emphasized = new Set<number>();
@@ -56,7 +78,10 @@ export function VerseText({
   }
 
   return (
-    <Text style={[{ color: theme.text, fontSize, lineHeight }, style]} numberOfLines={numberOfLines}>
+    <Text
+      style={[{ color: theme.text, fontSize, lineHeight, fontFamily: family }, style]}
+      numberOfLines={numberOfLines}
+      accessibilityRole={accessibilityRole}>
       {label ? (
         <Text style={[styles.label, { color: labelColor ?? theme.textSecondary, fontSize: fontSize * 0.62 }]}>{label} </Text>
       ) : null}
@@ -71,7 +96,7 @@ export function VerseText({
           case 'text': {
             if (!emphasized.has(i)) {
               return (
-                <Text key={i} style={[s.red && redLetters && { color: theme.redLetter }, s.italic && styles.italic]}>
+                <Text key={i} style={textStyle(s)}>
                   {s.text}
                 </Text>
               );
@@ -81,13 +106,7 @@ export function VerseText({
             return (
               <Fragment key={i}>
                 {lead}
-                <Text
-                  style={[
-                    styles.emphasis,
-                    { backgroundColor: theme.backgroundSelected },
-                    s.red && redLetters && { color: theme.redLetter },
-                    s.italic && styles.italic,
-                  ]}>
+                <Text style={[styles.emphasis, { backgroundColor: theme.backgroundSelected }, textStyle(s)]}>
                   {s.text.slice(lead.length)}
                 </Text>
               </Fragment>
@@ -110,6 +129,12 @@ export function VerseText({
       {trailing}
     </Text>
   );
+}
+
+/** "#rrggbb" at `percent` opacity */
+function withAlpha(color: string, percent: number) {
+  if (!/^#[0-9a-f]{6}$/i.test(color) || percent >= 100) return color;
+  return color + Math.round((Math.max(percent, 0) / 100) * 255).toString(16).padStart(2, '0');
 }
 
 const styles = StyleSheet.create({

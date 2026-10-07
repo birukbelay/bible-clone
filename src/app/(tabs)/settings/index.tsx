@@ -1,10 +1,12 @@
 /**
  * Settings: Bible versions (installed / versions folder / download from a link or a catalog /
- * import a .db file), language, reading options, and sync status.
+ * import a .db file), language, reading and copy options, links to the other tools, and sync status.
  */
+import { router, type Href } from 'expo-router';
 import { useEffect, useState } from 'react';
 import { ActivityIndicator, Platform, ScrollView, StyleSheet, View } from 'react-native';
 
+import { formatVerses } from '@/bible/reading';
 import {
   cancelDownload,
   chooseVersionsFolder,
@@ -31,10 +33,10 @@ import { MaxContentWidth, Spacing } from '@/constants/theme';
 import { useTabBottomInset } from '@/hooks/use-tab-inset';
 import { useTheme } from '@/hooks/use-theme';
 import { LANGUAGES, useT, type T } from '@/i18n';
-import { settings, useSetting } from '@/settings';
+import { settings, useSetting, type CopyOptions } from '@/settings';
 import { hasLocalChanges, syncNow, useSyncState } from '@/sync';
 
-const SAMPLE = 'For God so loved@[G25@] the world, that he gave his only begotten Son.';
+const SAMPLE = 'For God so [greatly] loved@[G25@] the world, that he [even] gave his [One and] only begotten Son.';
 
 export default function SettingsScreen() {
   const theme = useTheme();
@@ -52,6 +54,8 @@ export default function SettingsScreen() {
       <Language />
       <Appearance />
       <Reading />
+      <Copying />
+      <Tools />
       <Sync />
     </ScrollView>
   );
@@ -425,13 +429,15 @@ function Appearance() {
           options={[
             { value: 'system', label: t('System') },
             { value: 'light', label: t('Light') },
+            { value: 'sepia', label: t('Sepia') },
             { value: 'dark', label: t('Dark') },
+            { value: 'black', label: t('Black') },
           ]}
           value={theme}
           onChange={setTheme}
         />
         <ThemedText type="small" themeColor="textSecondary">
-          {t("System follows your device's light / dark mode.")}
+          {t("System follows your device's light / dark mode. Sepia is easy on the eyes; black saves battery on OLED screens.")}
         </ThemedText>
       </View>
     </>
@@ -442,36 +448,97 @@ function Reading() {
   const theme = useTheme();
   const t = useT();
   const [fontSize, setFontSize] = useSetting(settings.fontSize);
+  const [lineSpacing, setLineSpacing] = useSetting(settings.lineSpacing);
+  const [margins, setMargins] = useSetting(settings.margins);
+  const [fontFamily, setFontFamily] = useSetting(settings.fontFamily);
+  const [verseLines, setVerseLines] = useSetting(settings.verseLines);
   const [redLetters, setRedLetters] = useSetting(settings.redLetters);
   const [showStrongs, setShowStrongs] = useSetting(settings.showStrongs);
+  const [asideSize, setAsideSize] = useSetting(settings.asideSize);
+  const [asideOpacity, setAsideOpacity] = useSetting(settings.asideOpacity);
+  const round = (n: number) => Math.round(n * 100) / 100;
+  const stepper = (value: string, onLess: (() => void) | null, onMore: (() => void) | null, less: string, more: string) => (
+    <View style={styles.rowActions}>
+      <IconButton icon={Icons.textSmaller} label={less} color={theme.tint} disabled={!onLess} onPress={() => onLess?.()} />
+      <ThemedText style={styles.fontSize}>{value}</ThemedText>
+      <IconButton icon={Icons.textLarger} label={more} color={theme.tint} disabled={!onMore} onPress={() => onMore?.()} />
+    </View>
+  );
   return (
     <>
       <SectionHeader title={t('Reading')} />
       <Row
         title={t('Text size')}
-        right={
-          <View style={styles.rowActions}>
-            <IconButton
-              icon={Icons.textSmaller}
-              label={t('Smaller text')}
-              color={theme.tint}
-              disabled={fontSize <= 12}
-              onPress={() => setFontSize(fontSize - 1)}
-            />
-            <ThemedText style={styles.fontSize}>{fontSize}</ThemedText>
-            <IconButton
-              icon={Icons.textLarger}
-              label={t('Larger text')}
-              color={theme.tint}
-              disabled={fontSize >= 34}
-              onPress={() => setFontSize(fontSize + 1)}
-            />
-          </View>
-        }
+        right={stepper(
+          String(fontSize),
+          fontSize > 12 ? () => setFontSize(fontSize - 1) : null,
+          fontSize < 34 ? () => setFontSize(fontSize + 1) : null,
+          t('Smaller text'),
+          t('Larger text'),
+        )}
+      />
+      <Row
+        title={t('Line spacing')}
+        right={stepper(
+          lineSpacing.toFixed(1),
+          lineSpacing > 1.21 ? () => setLineSpacing(round(lineSpacing - 0.1)) : null,
+          lineSpacing < 2.39 ? () => setLineSpacing(round(lineSpacing + 0.1)) : null,
+          t('Less space'),
+          t('More space'),
+        )}
+      />
+      <Row
+        title={t('Margins')}
+        right={stepper(
+          String(margins),
+          margins > 0 ? () => setMargins(margins - 8) : null,
+          margins < 48 ? () => setMargins(margins + 8) : null,
+          t('Narrower margins'),
+          t('Wider margins'),
+        )}
+      />
+      <Row
+        title={t('Bracket text size')}
+        subtitle={t('Text in [brackets] and {braces}, as in the Amplified Bible')}
+        right={stepper(
+          `${asideSize}%`,
+          asideSize > 50 ? () => setAsideSize(asideSize - 5) : null,
+          asideSize < 95 ? () => setAsideSize(asideSize + 5) : null,
+          t('Smaller bracket text'),
+          t('Larger bracket text'),
+        )}
+      />
+      <Row
+        title={t('Bracket text opacity')}
+        right={stepper(
+          `${asideOpacity}%`,
+          asideOpacity > 30 ? () => setAsideOpacity(asideOpacity - 5) : null,
+          asideOpacity < 100 ? () => setAsideOpacity(asideOpacity + 5) : null,
+          t('More faded'),
+          t('Less faded'),
+        )}
       />
       <View style={styles.block}>
-        <VerseText text={`@6${SAMPLE}@5`} label="16" fontSize={fontSize} redLetters={redLetters} showStrongs={showStrongs} />
+        <Segmented
+          options={[
+            { value: 'sans', label: t('Sans') },
+            { value: 'serif', label: t('Serif') },
+            { value: 'mono', label: t('Mono') },
+          ]}
+          value={fontFamily}
+          onChange={setFontFamily}
+        />
+        <VerseText
+          text={`@6${SAMPLE}@5`}
+          label="16"
+          fontSize={fontSize}
+          lineSpacing={lineSpacing}
+          fontFamily={fontFamily}
+          redLetters={redLetters}
+          showStrongs={showStrongs}
+        />
       </View>
+      <SwitchRow title={t('Each verse on its own line')} value={verseLines} onChange={setVerseLines} />
       <SwitchRow title={t('Words of Jesus in red')} value={redLetters} onChange={setRedLetters} />
       <SwitchRow
         title={t("Show Strong's numbers")}
@@ -479,6 +546,83 @@ function Reading() {
         value={showStrongs}
         onChange={setShowStrongs}
       />
+    </>
+  );
+}
+
+/** What Copy and Share put around the verses. */
+function Copying() {
+  const t = useT();
+  const [copy, setCopy] = useSetting(settings.copy);
+  const update = (change: Partial<CopyOptions>) => setCopy({ ...copy, ...change });
+  const sample = formatVerses(
+    [
+      { ari: 0x2a0310, ari_end: 0x2a0310, label: '16', text: 'For God so loved the world, that he gave his only begotten Son,', para: 0 },
+      { ari: 0x2a0311, ari_end: 0x2a0311, label: '17', text: 'For God sent not his Son into the world to condemn the world;', para: 0 },
+    ],
+    'John 3:16-17',
+    'KJV',
+    copy,
+  );
+  return (
+    <>
+      <SectionHeader title={t('Copy and share')} />
+      <View style={styles.block}>
+        <ThemedText type="small" themeColor="textSecondary">
+          {t('Reference')}
+        </ThemedText>
+        <Segmented
+          options={[
+            { value: 'after', label: t('After') },
+            { value: 'before', label: t('Before') },
+            { value: 'none', label: t('None') },
+          ]}
+          value={copy.reference}
+          onChange={(v) => update({ reference: v })}
+        />
+        {copy.reference !== 'none' && (
+          <Segmented
+            options={[
+              { value: 'dash', label: '— John 3:16' },
+              { value: 'plain', label: 'John 3:16' },
+              { value: 'parens', label: '(John 3:16)' },
+            ]}
+            value={copy.style}
+            onChange={(v) => update({ style: v })}
+          />
+        )}
+      </View>
+      {copy.reference !== 'none' && <SwitchRow title={t('Version name')} value={copy.version} onChange={(v) => update({ version: v })} />}
+      <SwitchRow title={t('Verse numbers')} value={copy.numbers} onChange={(v) => update({ numbers: v })} />
+      <SwitchRow title={t('Each verse on its own line')} value={copy.lines} onChange={(v) => update({ lines: v })} />
+      <View style={styles.block}>
+        <ThemedText type="small" themeColor="textSecondary" selectable>
+          {sample}
+        </ThemedText>
+      </View>
+    </>
+  );
+}
+
+const TOOLS: { title: string; icon: keyof typeof Icons; href: Href }[] = [
+  { title: 'Audio Bible', icon: 'headphones', href: '/audio' as Href },
+  { title: 'Backup & export', icon: 'backup', href: '/backup' as Href },
+  { title: 'Reading progress', icon: 'chart', href: '/progress' as Href },
+  { title: 'Daily readings', icon: 'calendar', href: '/lectionary' as Href },
+  { title: 'Memory verses', icon: 'memory', href: '/memory' as Href },
+  { title: 'Prayer list', icon: 'prayer', href: '/prayers' as Href },
+  { title: 'History', icon: 'history', href: '/history' as Href },
+  { title: 'Reading plans', icon: 'plan', href: '/plans' },
+];
+
+function Tools() {
+  const t = useT();
+  return (
+    <>
+      <SectionHeader title={t('More')} />
+      {TOOLS.map((tool) => (
+        <Row key={tool.title} left={<Icon name={Icons[tool.icon]} size={20} />} title={t(tool.title)} chevron onPress={() => router.push(tool.href)} />
+      ))}
     </>
   );
 }

@@ -6,6 +6,7 @@ import { Platform } from 'react-native';
 
 import { bookOf, chapterRange } from './ari';
 import { EXTRA_BOOKS, sectionRange, type Section } from './canon';
+import { foldGeez, hasGeez, isVariantLetter } from './geez';
 import { plainText } from './markup';
 import { bibleDb } from './versions';
 
@@ -28,8 +29,13 @@ export function getBooks(versionId: string) {
 
 /** Forget cached book lists, e.g. after a version file was replaced. */
 export function clearBooksCache(versionId?: string) {
-  if (versionId) booksCache.delete(versionId);
-  else booksCache.clear();
+  if (versionId) {
+    booksCache.delete(versionId);
+    foldedIndex.delete(versionId);
+  } else {
+    booksCache.clear();
+    foldedIndex.clear();
+  }
 }
 
 export async function getChapter(versionId: string, ari: number) {
@@ -99,11 +105,14 @@ export type SearchScope = 'all' | Section | { book: number };
 
 /**
  * Full-text search. Words are matched as prefixes ("love" finds "loved"); "quoted text" is a phrase.
+ * Ge'ez spelling variants match each other (ሀ ሐ ኀ, ሰ ሠ, ...; see geez.ts).
  */
 export async function searchText(versionId: string, query: string, scope: SearchScope = 'all', limit = 300) {
   const [from, to] =
     scope === 'all' ? [0, 0xffffff] : typeof scope === 'string' ? sectionRange(scope) : [scope.book << 16, (scope.book << 16) | 0xffff];
   if (Platform.OS === 'web') return scanText(versionId, query, from, to, limit);
+  // files built before the Ge'ez folding: their index has the letters as written
+  if (hasGeez(query) && !(await hasFoldedIndex(versionId))) return scanText(versionId, query, from, to, limit);
   const match = toFtsQuery(query);
   if (!match) return [];
   const db = await bibleDb(versionId);
@@ -119,9 +128,23 @@ export async function searchText(versionId: string, query: string, scope: Search
   );
 }
 
+const foldedIndex = new Map<string, Promise<boolean>>();
+
+/** Whether the file's full-text index has Ge'ez variants folded (info.search_fold = 'geez', see build_bible_db.py). */
+function hasFoldedIndex(versionId: string) {
+  let known = foldedIndex.get(versionId);
+  if (!known) {
+    known = bibleDb(versionId)
+      .then((db) => db.getFirstAsync<{ value: string }>("SELECT value FROM info WHERE key = 'search_fold'"))
+      .then((row) => row?.value === 'geez', () => false);
+    foldedIndex.set(versionId, known);
+  }
+  return known;
+}
+
 function toFtsQuery(input: string) {
   const parts: string[] = [];
-  for (const m of input.matchAll(/"([^"]+)"|(\S+)/g)) {
+  for (const m of foldGeez(input).matchAll(/"([^"]+)"|(\S+)/g)) {
     if (m[1]) {
       const words = m[1].replace(/["*]/g, ' ').trim();
       if (words) parts.push(`"${words}"`);
@@ -134,13 +157,14 @@ function toFtsQuery(input: string) {
   return parts.join(' ');
 }
 
-/** Lower case without accents, like the FTS tokenizer (unicode61 remove_diacritics). */
-const fold = (s: string) => s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase();
+/** Lower case without accents, like the FTS tokenizer (unicode61 remove_diacritics), Ge'ez variants folded. */
+export const fold = (s: string) => foldGeez(s.normalize('NFD').replace(/\p{M}/gu, '').toLowerCase());
 const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const NOT_WORD = '[^\\p{L}\\p{N}]';
 
 /**
- * Search without a full-text index (the browser's SQLite has no FTS5), same rules as searchText:
+ * Search without a full-text index (the browser's SQLite has no FTS5, older files have no Ge'ez
+ * folding), same rules as searchText:
  * SQLite narrows the verses down with LIKE on the longest word, the rest is matched here.
  */
 async function scanText(versionId: string, query: string, from: number, to: number, limit: number) {
@@ -159,7 +183,8 @@ async function scanText(versionId: string, query: string, from: number, to: numb
   }
   if (!tests.length) return [];
   const longest = words.reduce((a, b) => (b.length > a.length ? b : a));
-  const like = `%${longest.replace(/[\\%_]/g, '\\$&')}%`;
+  // a Ge'ez letter with spelling variants may be any of them in the text: '_' matches one letter
+  const like = `%${[...longest.replace(/[\\%_]/g, '\\$&')].map((ch) => (isVariantLetter(ch) ? '_' : ch)).join('')}%`;
 
   const db = await bibleDb(versionId);
   const results: Verse[] = [];

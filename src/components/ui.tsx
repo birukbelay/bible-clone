@@ -76,6 +76,7 @@ export function IconButton({
   size = 22,
   label,
   disabled,
+  onLongPress,
 }: {
   icon: IconName;
   onPress: () => void;
@@ -83,13 +84,17 @@ export function IconButton({
   size?: number;
   label: string;
   disabled?: boolean;
+  onLongPress?: () => void;
 }) {
   const theme = useTheme();
   return (
     <Pressable
       onPress={onPress}
+      onLongPress={onLongPress}
       disabled={disabled}
+      accessibilityRole="button"
       accessibilityLabel={label}
+      accessibilityState={{ disabled: !!disabled }}
       hitSlop={8}
       style={({ pressed, hovered }: Interaction) => [
         styles.iconButton,

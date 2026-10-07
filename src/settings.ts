@@ -42,13 +42,37 @@ export function useSetting<T>(setting: Setting<T>): [T, (value: T) => void] {
   return [value, (v: T) => setting.set(v)];
 }
 
+export type ThemeChoice = 'system' | 'light' | 'dark' | 'sepia' | 'black';
+
+/** What Copy / Share put around the verse text. */
+export type CopyOptions = {
+  /** verse numbers before each verse of a range */
+  numbers: boolean;
+  /** reference before or after the text */
+  reference: 'before' | 'after' | 'none';
+  /** version name after the reference */
+  version: boolean;
+  /** "— John 3:16 (KJV)" or "John 3:16 KJV" or "(John 3:16)" */
+  style: 'dash' | 'plain' | 'parens';
+  /** each verse on its own line */
+  lines: boolean;
+};
+
+/** Source of a version's audio Bible, see docs/fyn-rn-data.md section 7. */
+export type AudioSource = {
+  /** URL with {BOOK} (USFM code), {book} (1-based number), {book0} (0-based), {chapter}, {chapter3} */
+  template?: string;
+  /** URL of a timings JSON template (same placeholders) for verse highlighting; optional */
+  timings?: string;
+};
+
 export const settings = {
   /** id of the Bible version shown in the reader (info.id of its .db) */
   version: createSetting('reader.version', 'AMH1954'),
   /** ari of the last read verse (Genesis 1:1) */
   position: createSetting('reader.position', 0x000101),
   /** app colors: follow the phone, or always light / dark */
-  theme: createSetting<'system' | 'light' | 'dark'>('app.theme', 'system'),
+  theme: createSetting<ThemeChoice>('app.theme', 'system'),
   fontSize: createSetting('reader.fontSize', 19),
   /** show Strong's numbers after tagged words (versions with strongs = 1) */
   showStrongs: createSetting('reader.showStrongs', false),
@@ -80,4 +104,44 @@ export const settings = {
   language: createSetting<'system' | 'en' | 'am'>('app.language', 'system'),
   /** calendar of the dates in reading plans; 'auto' is Ethiopian when the app is in Amharic */
   calendar: createSetting<'auto' | 'gregorian' | 'ethiopian'>('app.calendar', 'auto'),
+
+  /** line height as a multiple of the font size */
+  lineSpacing: createSetting('reader.lineSpacing', 1.55),
+  /** extra horizontal padding of the reader text, in points */
+  margins: createSetting('reader.margins', 0),
+  /** every verse starts on its own line instead of running as paragraphs */
+  verseLines: createSetting('reader.verseLines', false),
+  /** size of [bracketed] and {braced} text (brackets included), percent of the verse text; always below 100 */
+  asideSize: createSetting('reader.asideSize', 80),
+  /** opacity of [bracketed] and {braced} text, percent */
+  asideOpacity: createSetting('reader.asideOpacity', 65),
+  /** font of the Bible text */
+  fontFamily: createSetting<'sans' | 'serif' | 'mono'>('reader.fontFamily', 'sans'),
+  copy: createSetting<CopyOptions>('reader.copy', {
+    numbers: true,
+    reference: 'after',
+    version: true,
+    style: 'dash',
+    lines: false,
+  }),
+  /** chapters opened in the reader, newest last (aris); with the back / forward index */
+  history: createSetting<{ items: number[]; index: number }>('reader.history', { items: [], index: -1 }),
+  /** last searches, newest first */
+  searchHistory: createSetting<string[]>('search.history', []),
+  /** read aloud (text to speech) speed, 1 = normal */
+  ttsRate: createSetting('tts.rate', 1),
+  /** identifier of the voice; empty = the phone's default for the version's language */
+  ttsVoice: createSetting('tts.voice', ''),
+  /** audio Bible playback speed */
+  audioRate: createSetting('audio.rate', 1),
+  /** play the next chapter when one ends (audio and read aloud) */
+  audioContinue: createSetting('audio.continue', true),
+  /** audio Bible URL template of each version (version id -> source); catalog entries fill it too */
+  audioSources: createSetting<Record<string, AudioSource>>('audio.sources', {}),
+  /** chapters read: chapter ari (verse 0) -> last time read (ms) */
+  readChapters: createSetting<Record<string, number>>('progress.chapters', {}),
+  /** days with some reading: 'YYYY-MM-DD' -> chapters read that day */
+  readDays: createSetting<Record<string, number>>('progress.days', {}),
+  /** daily reminder to review the memory verses */
+  memoryReminder: createSetting<{ enabled: boolean; time: string }>('memory.reminder', { enabled: false, time: '08:00' }),
 };

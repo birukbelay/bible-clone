@@ -20,7 +20,7 @@ export function useColorScheme() {
   const [theme] = useSetting(settings.theme);
   const system = useSystemColorScheme();
 
-  const scheme = theme === 'system' ? system : theme;
+  const scheme = theme === 'system' ? system : theme === 'sepia' ? 'light' : theme === 'black' ? 'dark' : theme;
 
   // native form controls and scrollbars follow the page
   useEffect(() => {

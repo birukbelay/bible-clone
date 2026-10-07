@@ -1,5 +1,5 @@
 /**
- * Daily reading-plan reminders as local notifications (scheduled on the phone itself; no push
+ * Daily reading-plan (and memory verse) reminders as local notifications (scheduled on the phone itself; no push
  * service or account). expo-notifications is optional: when it is not installed in the build,
  * reminders report themselves unavailable and the reader shows today's reading instead.
  *
@@ -100,6 +100,33 @@ export async function scheduleReminder(plan: { id: string; name: string; time: s
     },
   });
   return 'scheduled';
+}
+
+/** Schedules (or replaces) any daily notification, e.g. the memory verse review. `time` is "HH:MM". */
+export async function scheduleDaily(identifier: string, title: string, body: string, time: string): Promise<ReminderResult> {
+  const N = notifications();
+  if (!N) return 'unavailable';
+  await setupReminders();
+  if (!(await permitted(N))) return 'denied';
+  const [hour, minute] = time.split(':').map(Number);
+  await N.cancelScheduledNotificationAsync(identifier).catch(() => {});
+  await N.scheduleNotificationAsync({
+    identifier,
+    content: { title, body },
+    trigger: {
+      type: N.SchedulableTriggerInputTypes.DAILY,
+      hour: Number.isFinite(hour) ? hour : 7,
+      minute: Number.isFinite(minute) ? minute : 0,
+      channelId: CHANNEL,
+    },
+  });
+  return 'scheduled';
+}
+
+export async function cancelNotification(identifier: string) {
+  const N = notifications();
+  if (!N) return;
+  await N.cancelScheduledNotificationAsync(identifier).catch(() => {});
 }
 
 export async function cancelReminder(planId: string) {
