@@ -28,6 +28,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
 import { bookOf, chapterOf, isSameChapter, verseOf } from '@/bible/ari';
+import { canonStatus, isExtraVerse } from '@/bible/canon';
 import { plainText } from '@/bible/markup';
 import { getBooks, getChapter, getRange, useAsync, type Extra, type Verse } from '@/bible/queries';
 import { adjacentChapter, encodeRanges, formatRef, selectionToRanges, type VerseRange } from '@/bible/reference';
@@ -92,6 +93,9 @@ function groupExtras(extras: Extra[] | undefined) {
 
 type Extras = ReturnType<typeof groupExtras>;
 
+/** Which verses show their notes: all when the setting is on, and the ones flipped by their marker. */
+type NotesState = { isOpen: (ari: number) => boolean; toggle: (ari: number) => void };
+
 export default function ReaderScreen() {
   const theme = useTheme();
   const t = useT();
@@ -107,6 +111,7 @@ export default function ReaderScreen() {
   const [fontSize] = useSetting(settings.fontSize);
   const [redLetters] = useSetting(settings.redLetters);
   const [showStrongs] = useSetting(settings.showStrongs);
+  const [showNotes, setShowNotes] = useSetting(settings.showNotes);
   const [splitOn, setSplitOn] = useSetting(settings.split);
   const [ratio, setRatio] = useSetting(settings.splitRatio);
   const [drawer, setDrawer] = useState(false);
@@ -147,6 +152,26 @@ export default function ReaderScreen() {
     setSelection({ chapterAri, aris: next });
   };
   const ranges = selectionToRanges(selected, units);
+
+  // notes opened (or, with all notes shown, closed) one verse at a time, until the chapter changes
+  const [flipped, setFlipped] = useState({ key: '', aris: new Set<string>() });
+  const flippedHere = flipped.key === data?.key ? flipped.aris : new Set<string>();
+  const notesState = (column: 'main' | 'side'): NotesState => ({
+    isOpen: (ari) => showNotes !== flippedHere.has(`${column}:${ari}`),
+    toggle: (ari) => {
+      const next = new Set(flippedHere);
+      const id = `${column}:${ari}`;
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      setFlipped({ key: data?.key ?? '', aris: next });
+    },
+  });
+  const noteCount = [...mainExtras.footnotes.values(), ...sideExtras.footnotes.values()].reduce((n, list) => n + list.length, 0);
+  const toggleAllNotes = () => {
+    setFlipped({ key: '', aris: new Set() });
+    setShowNotes(!showNotes);
+  };
+  const extraChapter = canonStatus(chapterAri | 1);
 
   // ---- scrolling ----
   const scrollRef = useRef<ScrollView>(null);
@@ -384,6 +409,35 @@ export default function ReaderScreen() {
             <Empty title={t('This chapter is not in this version')} />
           ) : null}
           {!fullscreen && <PlanBanner chapterAri={chapterAri} />}
+          {data && units.length > 0 && extraChapter !== 'canon' && (
+            <View style={[styles.canonNotice, { backgroundColor: theme.backgroundElement }]}>
+              <ThemedText type="small" themeColor="textSecondary" style={styles.canonText}>
+                {extraChapter === 'book'
+                  ? t('This book is not in the 66-book canon (deuterocanonical / Orthodox).')
+                  : t('This chapter is not in the 66-book canon (extra chapter).')}
+              </ThemedText>
+            </View>
+          )}
+          {data && noteCount > 0 && (
+            <Pressable
+              onPress={toggleAllNotes}
+              accessibilityRole="button"
+              style={({ pressed, hovered }: Interaction) => [
+                styles.notesBar,
+                { borderColor: theme.border },
+                hovered && { backgroundColor: theme.backgroundElement },
+                pressed && styles.pressed,
+              ]}>
+              <Icon name={Icons.notes} size={16} color={theme.tint} />
+              <ThemedText type="small" themeColor="textSecondary" style={styles.fill}>
+                {noteCount === 1 ? t('1 note in this chapter') : t('{count} notes in this chapter', { count: noteCount })}
+              </ThemedText>
+              <ThemedText type="smallBold" themeColor="tint">
+                {showNotes ? t('Collapse all') : t('Expand all')}
+              </ThemedText>
+              <Icon name={showNotes ? Icons.up : Icons.down} size={18} color={theme.tint} />
+            </Pressable>
+          )}
           {data &&
             units.map((u) => {
               const unitMarks = marksOf(marks, u.ari, u.ariEnd);
@@ -393,6 +447,7 @@ export default function ReaderScreen() {
                 <Column
                   verses={u.left}
                   extras={mainExtras}
+                  notes={notesState('main')}
                   fontSize={verseFont}
                   labelColor={theme.tint}
                   redLetters={redLetters}
@@ -420,6 +475,7 @@ export default function ReaderScreen() {
                         <Column
                           verses={u.right}
                           extras={sideExtras}
+                          notes={notesState('side')}
                           fontSize={verseFont}
                           labelColor={theme.splitTint}
                           redLetters={redLetters}
@@ -502,10 +558,14 @@ export default function ReaderScreen() {
   );
 }
 
-/** One version's verses of a row, with their section titles and footnotes. */
+/**
+ * One version's verses of a row, with their section titles and notes. A verse with notes ends
+ * with a small marker that opens / closes them; verses the KJV doesn't have are tagged "extra".
+ */
 function Column({
   verses,
   extras,
+  notes,
   fontSize,
   labelColor,
   redLetters,
@@ -513,33 +573,55 @@ function Column({
 }: {
   verses: Verse[];
   extras: Extras;
+  notes: NotesState;
   fontSize: number;
   labelColor: string;
   redLetters: boolean;
   showStrongs: boolean;
 }) {
   const theme = useTheme();
-  return verses.map((v) => (
-    <View key={v.ari}>
-      {extras.titles.get(v.ari)?.map((title, i) => (
-        <VerseText key={i} text={title} fontSize={fontSize - 2} style={[styles.heading, { color: theme.textSecondary }]} />
-      ))}
-      <VerseText
-        text={v.text}
-        label={v.label}
-        labelColor={labelColor}
-        fontSize={fontSize}
-        redLetters={redLetters}
-        showStrongs={showStrongs}
-        onStrongPress={(n) => router.push({ pathname: '/strongs/[number]', params: { number: n } })}
-      />
-      {extras.footnotes.get(v.ari)?.map((note, i) => (
-        <ThemedText key={i} type="small" themeColor="textSecondary" style={styles.footnote}>
-          {plainText(note)}
-        </ThemedText>
-      ))}
-    </View>
-  ));
+  const t = useT();
+  return verses.map((v) => {
+    const footnotes = extras.footnotes.get(v.ari);
+    const open = !!footnotes && notes.isOpen(v.ari);
+    const marker = footnotes ? (
+      <Text
+        onPress={() => notes.toggle(v.ari)}
+        accessibilityRole="button"
+        accessibilityLabel={open ? t('Hide notes') : t('Show notes')}
+        style={[styles.noteMarker, { color: theme.tint, fontSize: Math.max(11, fontSize * 0.62) }]}>
+        {/* non-breaking spaces keep the marker in one piece at the end of the line */}
+        {`\u00a0\u00a0${footnotes.length > 1 ? t('{count} notes', { count: footnotes.length }) : t('note')}\u00a0${open ? '▴' : '▾'}`}
+      </Text>
+    ) : null;
+    return (
+      <View key={v.ari}>
+        {extras.titles.get(v.ari)?.map((title, i) => (
+          <VerseText key={i} text={title} fontSize={fontSize - 2} style={[styles.heading, { color: theme.textSecondary }]} />
+        ))}
+        <VerseText
+          text={v.text}
+          label={v.label}
+          labelColor={labelColor}
+          badge={isExtraVerse(v.ari, v.ari_end) ? t('extra') : undefined}
+          fontSize={fontSize}
+          redLetters={redLetters}
+          showStrongs={showStrongs}
+          onStrongPress={(n) => router.push({ pathname: '/strongs/[number]', params: { number: n } })}
+          trailing={marker}
+        />
+        {open && (
+          <View style={[styles.footnotes, { borderLeftColor: theme.tint }]}>
+            {footnotes.map((note, i) => (
+              <ThemedText key={i} type="small" themeColor="textSecondary" style={styles.footnote}>
+                {plainText(note)}
+              </ThemedText>
+            ))}
+          </View>
+        )}
+      </View>
+    );
+  });
 }
 
 /** Today's reading of the active plans (and any missed ones), above the chapter. */
@@ -667,6 +749,7 @@ function ReadingOptions({ canSplit }: { canSplit: boolean }) {
   const [fontSize, setFontSize] = useSetting(settings.fontSize);
   const [redLetters, setRedLetters] = useSetting(settings.redLetters);
   const [showStrongs, setShowStrongs] = useSetting(settings.showStrongs);
+  const [showNotes, setShowNotes] = useSetting(settings.showNotes);
   const [split, setSplit] = useSetting(settings.split);
   const [speed, setSpeed] = useSetting(settings.scrollSpeed);
   const [appTheme, setAppTheme] = useSetting(settings.theme);
@@ -712,6 +795,7 @@ function ReadingOptions({ canSplit }: { canSplit: boolean }) {
       </View>
       <MenuItem label={t('Words of Jesus in red')} right={<Switch value={redLetters} onValueChange={setRedLetters} />} />
       <MenuItem label={t("Strong's numbers")} right={<Switch value={showStrongs} onValueChange={setShowStrongs} />} />
+      <MenuItem label={t('Expand all notes')} right={<Switch value={showNotes} onValueChange={setShowNotes} />} />
       {canSplit && <MenuItem label={t('Two versions side by side')} right={<Switch value={split} onValueChange={setSplit} />} />}
     </>
   );
@@ -917,7 +1001,21 @@ const styles = StyleSheet.create({
     marginBottom: Spacing.three,
   },
   planText: { flex: 1, gap: 2 },
-  footnote: { paddingHorizontal: Spacing.two, fontStyle: 'italic' },
+  footnotes: { marginLeft: Spacing.two, marginTop: 2, marginBottom: Spacing.one, paddingLeft: Spacing.two, borderLeftWidth: 2, gap: 2 },
+  footnote: { fontStyle: 'italic' },
+  noteMarker: { fontWeight: '700', fontStyle: 'normal' },
+  notesBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.two,
+    paddingHorizontal: Spacing.two,
+    paddingVertical: Spacing.one + 2,
+    marginBottom: Spacing.two,
+    borderRadius: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+  },
+  canonNotice: { borderRadius: 10, paddingHorizontal: Spacing.three, paddingVertical: Spacing.two, marginBottom: Spacing.two },
+  canonText: { fontStyle: 'italic', textAlign: 'center' },
   divider: { position: 'absolute', top: 0, width: GUTTER, alignItems: 'center', pointerEvents: 'box-none' },
   dividerLine: { position: 'absolute', top: 0, bottom: 0, left: GUTTER / 2, width: StyleSheet.hairlineWidth, pointerEvents: 'none' },
   // rotated labels: laid out horizontally (LABEL_LENGTH wide) then turned to run along the line

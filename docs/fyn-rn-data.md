@@ -11,11 +11,41 @@ Two kinds of storage, kept apart on purpose:
 Every verse is identified by its **ari** everywhere (Bible files, Strong's index, user data):
 
 ```
-ari = (book << 16) | (chapter << 8) | verse      book 0..65 (0 = Genesis, 39 = Matthew)
+ari = (book << 16) | (chapter << 8) | verse      book 0..65 (0 = Genesis, 39 = Matthew), 66..
 ```
 
 All versions use KJV versification, so a note written on `0x2b0310` (John 3:16) shows up in
 every version. A range is `ari .. ari_end` (inclusive); a single verse has `ari_end = ari`.
+
+### Catholic and Orthodox canons
+
+Books after Revelation have fixed numbers from 66 up, listed in `src/bible/canon.ts`
+(`EXTRA_BOOKS`) and in `EXTRA` in `../tools/build_bible_db.py`. Keep the two lists in step:
+user data stores the numbers. 66–83 follow the old app's apocrypha part (its `AP` books by `pos`):
+
+| book | | book | | book | |
+|---|---|---|---|---|---|
+| 66 | 1 Esdras | 76 | Letter of Jeremiah | 86 | Odes |
+| 67 | 2 Esdras | 77 | Susanna | 87 | Psalms of Solomon |
+| 68 | Tobit | 78 | Baruch | 88 | Daniel (Greek) |
+| 69 | Judith | 79 | Wisdom of Solomon | 89 | 1 Meqabyan |
+| 70 | Esther (Greek) | 80 | Song of the Three Young Men | 90 | 2 Meqabyan |
+| 71 | 1 Maccabees | 81 | Bel and the Dragon | 91 | 3 Meqabyan |
+| 72 | 2 Maccabees | 82 | Jubilees | 92 | 4 Baruch |
+| 73 | 3 Maccabees | 83 | Enoch | 93 | Laodiceans |
+| 74 | Sirach | 84 | 4 Maccabees | | |
+| 75 | Prayer of Manasseh | 85 | Psalm 151 | | |
+
+New books get the next free number; never renumber one. A version may also have chapters and
+verses the KJV doesn't (Psalm 151 as Psalms 151, Daniel 13–14, Hebrew-numbered verses such as
+Malachi 4 → 3:19–24): they are stored as they are. `canonStatus()` / `isExtraVerse()` in
+`canon.ts` compare against the KJV's verse counts, and the reader marks them:
+
+- a book after Revelation or a chapter past the KJV's last one gets a notice above the text;
+- a verse past the KJV's last verse of its chapter gets an "extra" badge after its number.
+
+Notes and cross references on these aris only show up in versions that have them. The book
+drawer and search get a third section (Deuterocanon) when the open version has books ≥ 66.
 
 ---
 
@@ -23,7 +53,9 @@ every version. A range is `ari .. ari_end` (inclusive); a single verse has `ari_
 
 Built by `../tools/build_bible_db.py bible <zoe dir> <out.db>` from the old app's data, or by
 `build_bible_db.py text <file> <out.db> --id ID --name NAME` from a verse-per-line text (eBible.org
-VPL, or "Genesis 1:1<TAB>text"). `build_bible_db.py free <app dir>` builds the bundled public-domain
+VPL, or "Genesis 1:1<TAB>text"), or by `build_bible_db.py epub <file.epub> <out.db> --id ID --name NAME`
+from an e-Bible whose verse numbers are `<span class="ver" id="vBBCCCVVV">` (Zondervan / Lockman
+editions such as the Amplified Bible; headings, notes and poetry lines are kept). `build_bible_db.py free <app dir>` builds the bundled public-domain
 versions (BSB, WEB, ASV, YLT, WBT) and regenerates `src/bible/bundled.ts`.
 Lives at `<documents>/SQLite/bibles/<id>.db`; **the file name must be `info.id` + `.db`**.
 
@@ -69,6 +101,15 @@ Verse text markup (parsed by `src/bible/markup.ts`):
 | `word@[G25@]` | Strong's number of the preceding word (only when `info.strongs = 1`) |
 
 Merged verses (one text for 16–17) are a single row with `ari` = 16, `ari_end` = 17, `label` = `16-17`.
+
+`extras` rows of kind `note` are the translators' notes. The reader shows a small "note" marker
+after the verse that expands its notes; the bar above the chapter (or Reading options →
+*Expand all notes*) expands every note.
+
+The builders read deuterocanonical books too: `bible` takes the old app's `AP` part, `text`
+knows USFM codes (`TOB`, `SIR`, `1MA`, `PS2`, `DAG`, …) and the common English names
+(Ecclesiasticus, Prayer of Azariah, Additions to Esther, …). `epub` keeps only BB 01–66, since
+editions number the extra books differently.
 
 ## 2. Strong's file (`strongs.db`, shared by all versions)
 

@@ -1,9 +1,10 @@
 /** Go to a book and chapter. */
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { bookOf, chapterOf, makeAri, NT_START } from '@/bible/ari';
+import { bookOf, chapterOf, makeAri } from '@/bible/ari';
+import { SECTION_NAMES, SECTIONS, sectionOf } from '@/bible/canon';
 import { getBooks, useAsync, type Book } from '@/bible/queries';
 import { useCurrentVersion } from '@/bible/versions';
 import { ThemedText } from '@/components/themed-text';
@@ -103,8 +104,9 @@ export default function PassageScreen() {
           onSubmitEditing={() => shown?.length === 1 && pick(shown[0])}
         />
       </View>
-      {section(t('Old Testament'), shown?.filter((b) => b.book < NT_START))}
-      {section(t('New Testament'), shown?.filter((b) => b.book >= NT_START))}
+      {SECTIONS.map((which) => (
+        <Fragment key={which}>{section(t(SECTION_NAMES[which].title), shown?.filter((b) => sectionOf(b.book) === which))}</Fragment>
+      ))}
     </ScrollView>
   );
 }

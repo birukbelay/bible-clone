@@ -1,6 +1,7 @@
 /**
  * Reader side drawer: verse of the day, shortcuts, and the book list with a chapter column.
- * Books of one testament at a time (tabs at the bottom); tapping a book shows its chapters,
+ * Books of one testament at a time (tabs at the bottom; a third tab for the deuterocanonical
+ * books when the version has them); tapping a book shows its chapters,
  * tapping a chapter opens it and closes the drawer. Swipe left or tap outside to close.
  */
 import * as Clipboard from 'expo-clipboard';
@@ -12,7 +13,8 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-na
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { scheduleOnRN } from 'react-native-worklets';
 
-import { bookOf, chapterOf, makeAri, NT_START } from '@/bible/ari';
+import { bookOf, chapterOf, makeAri } from '@/bible/ari';
+import { SECTION_NAMES, SECTIONS, sectionOf, type Section } from '@/bible/canon';
 import { plainText } from '@/bible/markup';
 import { getVerses, useAsync, type Book } from '@/bible/queries';
 import { encodeRanges, formatRef } from '@/bible/reference';
@@ -29,14 +31,6 @@ import type { Interaction } from './ui';
 
 const BOOK_ROW = 52;
 const CHAPTER_ROW = 48;
-
-type Testament = 'ot' | 'nt';
-
-/** English keys, translated with t() */
-const TESTAMENTS: Record<Testament, { title: string; abbr: string }> = {
-  ot: { title: 'Old Testament', abbr: 'OT' },
-  nt: { title: 'New Testament', abbr: 'NT' },
-};
 
 const SHORTCUTS: { label: string; icon: IconName; href: Href }[] = [
   { label: 'Search', icon: Icons.search, href: '/search' },
@@ -144,19 +138,19 @@ function DrawerContent({
   const t = useT();
   const insets = useSafeAreaInsets();
   const currentBook = bookOf(position);
-  const testamentOf = (book: number): Testament => (book >= NT_START ? 'nt' : 'ot');
-  const [testament, setTestament] = useState(testamentOf(currentBook));
+  const [testament, setTestament] = useState(sectionOf(currentBook));
   const [browsed, setBrowsed] = useState(currentBook);
 
-  const byTestament = (which: Testament) => books.filter((b) => testamentOf(b.book) === which);
+  const byTestament = (which: Section) => books.filter((b) => sectionOf(b.book) === which);
+  const tabs = SECTIONS.filter((which) => which !== 'dc' || byTestament('dc').length > 0);
   const list = byTestament(testament);
   const book = list.find((b) => b.book === browsed) ?? list[0];
   const chapters = Array.from({ length: book?.chapters ?? 0 }, (_, i) => i + 1);
   const currentChapter = book?.book === currentBook ? chapterOf(position) : 0;
 
-  const switchTestament = (which: Testament) => {
+  const switchTestament = (which: Section) => {
     setTestament(which);
-    setBrowsed(testamentOf(currentBook) === which ? currentBook : (byTestament(which)[0]?.book ?? 0));
+    setBrowsed(sectionOf(currentBook) === which ? currentBook : (byTestament(which)[0]?.book ?? 0));
   };
 
   const go = (chapter: number) => {
@@ -250,7 +244,7 @@ function DrawerContent({
       </View>
 
       <View style={[styles.tabs, { borderTopColor: theme.border, paddingBottom: insets.bottom, paddingLeft: insets.left }]}>
-        {(['ot', 'nt'] as const).map((which) => {
+        {tabs.map((which) => {
           const selected = which === testament;
           const color = selected ? theme.tint : theme.textSecondary;
           return (
@@ -258,9 +252,11 @@ function DrawerContent({
               key={which}
               onPress={() => switchTestament(which)}
               style={[styles.tab, { borderTopColor: selected ? theme.tint : 'transparent' }]}>
-              <Text style={[styles.tabTitle, { color }]}>{t(TESTAMENTS[which].title)}</Text>
-              <Text style={[styles.tabSubtitle, { color }]}>
-                {t(TESTAMENTS[which].abbr)} · {t('{count} books', { count: byTestament(which).length })}
+              <Text numberOfLines={1} style={[styles.tabTitle, { color }]}>
+                {t(SECTION_NAMES[which].title)}
+              </Text>
+              <Text numberOfLines={1} style={[styles.tabSubtitle, { color }]}>
+                {t(SECTION_NAMES[which].abbr)} · {t('{count} books', { count: byTestament(which).length })}
               </Text>
             </Pressable>
           );
@@ -387,7 +383,7 @@ const styles = StyleSheet.create({
   chapterCell: { width: 40, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   chapterText: { fontSize: 15 },
   tabs: { flexDirection: 'row', borderTopWidth: StyleSheet.hairlineWidth },
-  tab: { flex: 1, alignItems: 'center', paddingVertical: Spacing.two + 2, borderTopWidth: 3, gap: 1 },
+  tab: { flex: 1, alignItems: 'center', paddingHorizontal: Spacing.one, paddingVertical: Spacing.two + 2, borderTopWidth: 3, gap: 1 },
   tabTitle: { fontSize: 15, fontWeight: '700' },
   tabSubtitle: { fontSize: 11 },
 });

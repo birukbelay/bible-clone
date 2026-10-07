@@ -3,7 +3,8 @@ import { router, Stack } from 'expo-router';
 import { useState } from 'react';
 import { FlatList, Platform, StyleSheet, View } from 'react-native';
 
-import { searchText, useAsync, type SearchScope } from '@/bible/queries';
+import { BOOK_COUNT } from '@/bible/ari';
+import { getBooks, searchText, useAsync, type SearchScope } from '@/bible/queries';
 import { searchStrongs } from '@/bible/strongs';
 import { useCurrentVersion } from '@/bible/versions';
 import { ThemedText } from '@/components/themed-text';
@@ -16,7 +17,7 @@ import { useTheme } from '@/hooks/use-theme';
 import { useT } from '@/i18n';
 
 type Mode = 'text' | 'strongs';
-type Scope = 'all' | 'ot' | 'nt';
+type Scope = 'all' | 'ot' | 'nt' | 'dc';
 
 const LIMIT = 500;
 /** browsers get a plain field: their header search bar hides behind a button */
@@ -32,12 +33,15 @@ export default function SearchScreen() {
   const [input, setInput] = useState('');
   const query = useDebounced(input.trim(), 300);
   const versionId = version?.id ?? '';
+  const { data: books } = useAsync(() => (versionId ? getBooks(versionId) : Promise.resolve([])), [versionId]);
+  const hasExtraBooks = !!books?.some((b) => b.book >= BOOK_COUNT);
+  const where: Scope = scope === 'dc' && !hasExtraBooks ? 'all' : scope;
 
   const { data: verses, loading: textLoading } = useAsync(async () => {
     if (mode !== 'text' || !query || !versionId) return undefined;
-    const rows = await searchText(versionId, query, scope satisfies SearchScope, LIMIT);
+    const rows = await searchText(versionId, query, where satisfies SearchScope, LIMIT);
     return rows.map<VerseListItem>((v) => ({ key: String(v.ari), ari: v.ari, ariEnd: v.ari_end }));
-  }, [mode, query, scope, versionId]);
+  }, [mode, query, where, versionId]);
 
   const { data: entries } = useAsync(
     async () => (mode === 'strongs' && query ? searchStrongs(query, 80) : undefined),
@@ -73,8 +77,9 @@ export default function SearchScreen() {
             { value: 'all', label: t('Whole Bible') },
             { value: 'ot', label: t('Old Testament') },
             { value: 'nt', label: t('New Testament') },
+            ...(hasExtraBooks ? [{ value: 'dc' as const, label: t('Deuterocanon') }] : []),
           ]}
-          value={scope}
+          value={where}
           onChange={setScope}
         />
       )}

@@ -380,4 +380,19 @@ export const am: Record<string, string> = {
   Ethiopian: 'ኢትዮጵያዊ',
   'Dates in reading plans. Automatic uses the Ethiopian calendar when the app is in Amharic.':
     'በንባብ ዕቅዶች ውስጥ ያሉ ቀኖች። ራስ-ሰር መተግበሪያው በአማርኛ ሲሆን የኢትዮጵያን የቀን መቁጠሪያ ይጠቀማል።',
+  // extended canon, translators' notes
+  Deuterocanon: 'ቀኖና መጻሕፍት',
+  DC: 'ቀ.መ',
+  extra: 'ተጨማሪ',
+  'This book is not in the 66-book canon (deuterocanonical / Orthodox).': 'ይህ መጽሐፍ ከ66ቱ መጻሕፍት ውጭ ነው (የቀኖና / የኦርቶዶክስ መጽሐፍ)።',
+  'This chapter is not in the 66-book canon (extra chapter).': 'ይህ ምዕራፍ በ66ቱ መጻሕፍት ውስጥ የለም (ተጨማሪ ምዕራፍ)።',
+  note: 'ማብራሪያ',
+  '{count} notes': '{count} ማብራሪያዎች',
+  '1 note in this chapter': 'በዚህ ምዕራፍ 1 ማብራሪያ',
+  '{count} notes in this chapter': 'በዚህ ምዕራፍ {count} ማብራሪያዎች',
+  'Expand all': 'ሁሉንም ዘርጋ',
+  'Collapse all': 'ሁሉንም ሰብስብ',
+  'Show notes': 'ማብራሪያዎቹን አሳይ',
+  'Hide notes': 'ማብራሪያዎቹን ደብቅ',
+  'Expand all notes': 'ሁሉንም ማብራሪያዎች ዘርጋ',
 };

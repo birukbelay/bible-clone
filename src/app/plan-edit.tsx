@@ -3,10 +3,10 @@
  * a start day and an optional daily reminder.
  */
 import { router } from 'expo-router';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, View } from 'react-native';
 
-import { NT_START } from '@/bible/ari';
+import { SECTION_NAMES, SECTIONS, sectionOf } from '@/bible/canon';
 import { getBooks, useAsync, type Book } from '@/bible/queries';
 import { useCurrentVersion } from '@/bible/versions';
 import { useDates } from '@/calendar';
@@ -68,8 +68,6 @@ function PlanForm({ books }: { books: Book[] }) {
       .map((c) => ({ book: b.book, chapter: c })),
   );
   const days = Math.ceil(chapters.length / perDay);
-  const ot = books.filter((b) => b.book < NT_START);
-  const nt = books.filter((b) => b.book >= NT_START);
   const all = (list: Book[]) => list.length > 0 && list.every((b) => countIn(b) === b.chapters);
 
   const create = async () => {
@@ -181,8 +179,10 @@ function PlanForm({ books }: { books: Book[] }) {
       <ThemedText type="small" themeColor="textSecondary">
         {mode === 'books' ? t('Tap books to add or remove them.') : t('Tap a book, then tap its chapters.')}
       </ThemedText>
-      {section(t('Old Testament'), ot)}
-      {section(t('New Testament'), nt)}
+      {SECTIONS.map((which) => {
+        const list = books.filter((b) => sectionOf(b.book) === which);
+        return list.length ? <Fragment key={which}>{section(t(SECTION_NAMES[which].title), list)}</Fragment> : null;
+      })}
 
       <SectionHeader title={t('Chapters per day')} />
       <Stepper

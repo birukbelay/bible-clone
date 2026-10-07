@@ -1,5 +1,5 @@
 /** Renders verse markup (see src/bible/markup.ts) as nested <Text>. */
-import { Fragment } from 'react';
+import { Fragment, type ReactNode } from 'react';
 import { StyleSheet, Text, type StyleProp, type TextStyle } from 'react-native';
 
 import { parseVerse } from '@/bible/markup';
@@ -11,6 +11,8 @@ export type VerseTextProps = {
   /** verse number shown before the text */
   label?: string;
   labelColor?: string;
+  /** small tag after the verse number, e.g. "extra" for a verse the KJV doesn't have */
+  badge?: string;
   redLetters?: boolean;
   /** show tagged Strong's numbers after their words */
   showStrongs?: boolean;
@@ -19,6 +21,8 @@ export type VerseTextProps = {
   onStrongPress?: (number: string) => void;
   numberOfLines?: number;
   style?: StyleProp<TextStyle>;
+  /** inline content after the text, e.g. a tappable "note" marker */
+  trailing?: ReactNode;
 };
 
 export function VerseText({
@@ -26,12 +30,14 @@ export function VerseText({
   fontSize,
   label,
   labelColor,
+  badge,
   redLetters = true,
   showStrongs = false,
   emphasize,
   onStrongPress,
   numberOfLines,
   style,
+  trailing,
 }: VerseTextProps) {
   const theme = useTheme();
   const spans = parseVerse(text);
@@ -54,6 +60,12 @@ export function VerseText({
       {label ? (
         <Text style={[styles.label, { color: labelColor ?? theme.textSecondary, fontSize: fontSize * 0.62 }]}>{label} </Text>
       ) : null}
+      {badge ? (
+        <Text style={[styles.badge, { color: theme.textSecondary, backgroundColor: theme.backgroundElement, fontSize: fontSize * 0.55 }]}>
+          {` ${badge} `}
+        </Text>
+      ) : null}
+      {badge ? ' ' : null}
       {spans.map((s, i) => {
         switch (s.kind) {
           case 'text': {
@@ -95,12 +107,14 @@ export function VerseText({
             return <Fragment key={i}>{'\n' + ' '.repeat(s.indent)}</Fragment>;
         }
       })}
+      {trailing}
     </Text>
   );
 }
 
 const styles = StyleSheet.create({
   label: { fontWeight: '700' },
+  badge: { fontWeight: '600', fontStyle: 'italic', letterSpacing: 0.3 },
   italic: { fontStyle: 'italic' },
   emphasis: { fontWeight: '700' },
   strong: { fontWeight: '600' },

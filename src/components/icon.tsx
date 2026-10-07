@@ -33,6 +33,8 @@ export const Icons = {
   left: { ios: 'chevron.left', md: 'chevron_left' },
   right: { ios: 'chevron.right', md: 'chevron_right' },
   down: { ios: 'chevron.down', md: 'expand_more' },
+  up: { ios: 'chevron.up', md: 'expand_less' },
+  notes: { ios: 'text.bubble', md: 'notes' },
   download: { ios: 'arrow.down.circle', md: 'download' },
   sync: { ios: 'arrow.triangle.2.circlepath', md: 'sync' },
   more: { ios: 'ellipsis.circle', md: 'more_vert' },

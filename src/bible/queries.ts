@@ -5,6 +5,7 @@ import { useEffect, useState } from 'react';
 import { Platform } from 'react-native';
 
 import { bookOf, chapterRange } from './ari';
+import { EXTRA_BOOKS, sectionRange, type Section } from './canon';
 import { plainText } from './markup';
 import { bibleDb } from './versions';
 
@@ -94,14 +95,14 @@ export async function getRange(versionId: string, ari: number, ariEnd = ari) {
   );
 }
 
-export type SearchScope = 'all' | 'ot' | 'nt' | { book: number };
+export type SearchScope = 'all' | Section | { book: number };
 
 /**
  * Full-text search. Words are matched as prefixes ("love" finds "loved"); "quoted text" is a phrase.
  */
 export async function searchText(versionId: string, query: string, scope: SearchScope = 'all', limit = 300) {
   const [from, to] =
-    scope === 'all' ? [0, 0xffffff] : scope === 'ot' ? [0, 0x26ffff] : scope === 'nt' ? [0x270000, 0xffffff] : [scope.book << 16, (scope.book << 16) | 0xffff];
+    scope === 'all' ? [0, 0xffffff] : typeof scope === 'string' ? sectionRange(scope) : [scope.book << 16, (scope.book << 16) | 0xffff];
   if (Platform.OS === 'web') return scanText(versionId, query, from, to, limit);
   const match = toFtsQuery(query);
   if (!match) return [];
@@ -185,7 +186,9 @@ async function scanText(versionId: string, query: string, from: number, to: numb
 /** Book name lookup for references ("John 3:16") in lists. */
 export function bookName(books: Book[] | undefined, ari: number, short = false) {
   const b = books?.find((x) => x.book === bookOf(ari));
-  return b ? (short ? b.abbr : b.name) : `#${bookOf(ari) + 1}`;
+  if (b) return short ? b.abbr : b.name;
+  const extra = EXTRA_BOOKS[bookOf(ari)];
+  return extra ? (short ? extra.abbr : extra.name) : `#${bookOf(ari) + 1}`;
 }
 
 /**

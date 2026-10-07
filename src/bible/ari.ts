@@ -1,9 +1,11 @@
 /**
  * Verse key used everywhere (bible DBs, strongs.db, user data):
- * ari = (book << 16) | (chapter << 8) | verse, book 0..65 (0 = Genesis, 39 = Matthew).
+ * ari = (book << 16) | (chapter << 8) | verse, book 0..65 (0 = Genesis, 39 = Matthew), and
+ * 66..255 for books outside the 66-book canon (see canon.ts).
  * Verse 0 is used as "start of chapter" for range queries.
  */
 
+/** books of the 66-book canon; numbers from here on are deuterocanonical / Orthodox books */
 export const BOOK_COUNT = 66;
 export const NT_START = 39;
 

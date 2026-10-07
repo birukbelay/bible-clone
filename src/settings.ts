@@ -53,6 +53,8 @@ export const settings = {
   /** show Strong's numbers after tagged words (versions with strongs = 1) */
   showStrongs: createSetting('reader.showStrongs', false),
   redLetters: createSetting('reader.redLetters', true),
+  /** show the translators' notes under every verse; when off each verse has a "note" marker to open them */
+  showNotes: createSetting('reader.showNotes', false),
   /** show a second version next to the first one */
   split: createSetting('reader.split', false),
   /** id of the version in the right column of the split view */
