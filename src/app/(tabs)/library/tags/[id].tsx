@@ -11,14 +11,16 @@ import { deleteRecord } from '@/db/actions';
 import { useQuery, useRecord } from '@/db/hooks';
 import { useTabBottomInset } from '@/hooks/use-tab-inset';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 
 export default function TagScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
+  const t = useT();
   const bottomInset = useTabBottomInset();
   const tag = useRecord(
     () => database.get<Tag>('tags').find(id),
-    (t) => ({ name: t.name, color: t.color }),
+    (tg) => ({ name: tg.name, color: tg.color }),
     [id],
   );
   const links = useQuery(
@@ -29,7 +31,7 @@ export default function TagScreen() {
   const items = links?.map<VerseListItem>((l) => ({ key: l.id, ari: l.ari, ariEnd: l.ariEnd }));
 
   if (tag === undefined) return <Loading />;
-  if (tag === null) return <Empty title="This tag was deleted" />;
+  if (tag === null) return <Empty title={t('This tag was deleted')} />;
 
   return (
     <>
@@ -39,7 +41,7 @@ export default function TagScreen() {
           headerRight: () => (
             <IconButton
               icon={Icons.note}
-              label="Edit tag"
+              label={t('Edit tag')}
               color={theme.tint}
               onPress={() => router.push({ pathname: '/tag-edit', params: { id } })}
             />
@@ -49,11 +51,11 @@ export default function TagScreen() {
       <VerseList
         items={items}
         bottomInset={bottomInset}
-        empty={<Empty title="No verses with this tag" message="Select verses in the reader and tap Tag." />}
+        empty={<Empty title={t('No verses with this tag')} message={t('Select verses in the reader and tap Tag.')} />}
         onLongPress={(item) => {
           const link = byKey.get(item.key);
           if (!link) return;
-          confirm({ title: `Remove "${tag.name}" from this verse?`, confirmText: 'Remove', destructive: true }).then(
+          confirm({ title: t('Remove “{name}” from this verse?', { name: tag.name }), confirmText: t('Remove'), destructive: true }).then(
             (ok) => {
               if (ok) deleteRecord(link);
             },

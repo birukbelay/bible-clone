@@ -142,10 +142,22 @@ async function fetchBytes(url: string, signal?: AbortSignal, onProgress?: (recei
   return bytes;
 }
 
+/**
+ * Opens run one at a time: expo-sqlite's worker sets up its storage on the first call, and two
+ * calls at once (a screen loading two databases on a cold start) both try to and one fails.
+ */
+let opening: Promise<unknown> = Promise.resolve();
+
+function deserialize(bytes: Uint8Array) {
+  const db = opening.then(() => deserializeDatabaseAsync(bytes));
+  opening = db.catch(() => {});
+  return db;
+}
+
 function open(key: string, load: () => Promise<Uint8Array>) {
   const cached = connections.get(key);
   if (cached) return cached;
-  const db = load().then(toSqlite).then((bytes) => deserializeDatabaseAsync(bytes));
+  const db = load().then(toSqlite).then(deserialize);
   connections.set(key, db);
   db.catch(() => connections.delete(key));
   return db;
@@ -305,7 +317,7 @@ export async function installFile(source: Blob | Uint8Array, expectedId?: string
   let info: Info = {};
   let db: SQLiteDatabase | null = null;
   try {
-    db = await deserializeDatabaseAsync(bytes);
+    db = await deserialize(bytes);
     info = await readInfo(db);
     version = toVersion(info);
     const verse = await db.getFirstAsync('SELECT ari FROM verses LIMIT 1');
@@ -405,4 +417,51 @@ export async function downloadVersion(entry: CatalogEntry) {
 
 export function cancelDownload(id: string) {
   aborts.get(id)?.abort();
+}
+
+/** Downloads a .db (or .db.gz) file from any link (progress under downloads[LINK_DOWNLOAD]). */
+export const LINK_DOWNLOAD = ':link';
+
+export async function downloadFromUrl(url: string) {
+  if (!/^https?:\/\//i.test(url)) throw new Error('Enter a link starting with https://');
+  if (aborts.has(LINK_DOWNLOAD)) return;
+  const controller = new AbortController();
+  aborts.set(LINK_DOWNLOAD, controller);
+  const setProgress = (p: number) => setState({ downloads: { ...state.downloads, [LINK_DOWNLOAD]: p } });
+  setProgress(0);
+  try {
+    const bytes = await fetchBytes(url, controller.signal, (received, total) =>
+      setProgress(total > 0 ? Math.min(1, received / total) : -1),
+    ).catch((e: Error) => {
+      // browsers only read files from servers that allow it (CORS)
+      if (e?.name === 'TypeError') throw new Error(`Could not read ${url}. The server may not allow downloads from other sites.`);
+      throw e;
+    });
+    return await installFile(bytes);
+  } finally {
+    aborts.delete(LINK_DOWNLOAD);
+    const { [LINK_DOWNLOAD]: _, ...rest } = state.downloads;
+    setState({ downloads: rest });
+  }
+}
+
+// ---- versions folder: Android only; browsers keep downloaded versions in IndexedDB ----------
+
+export const folderSupported = false;
+
+export function displayName(uri: string) {
+  return uri.split('/').pop() ?? uri;
+}
+
+export type FolderRefresh = { added: string[]; updated: string[]; failed: string[] };
+
+export async function chooseVersionsFolder(): Promise<FolderRefresh | null> {
+  throw new Error('Not available in the browser');
+}
+
+export function forgetVersionsFolder() {}
+
+export async function refreshFromFolder(): Promise<FolderRefresh> {
+  await refreshVersions();
+  return { added: [], updated: [], failed: [] };
 }

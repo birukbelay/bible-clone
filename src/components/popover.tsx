@@ -7,6 +7,7 @@ import { BackHandler, Pressable, StyleSheet, View, type StyleProp, type ViewStyl
 
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 
 import { Icon, type IconName } from './icon';
 import { ThemedText } from './themed-text';
@@ -25,6 +26,7 @@ export function Popover({
   children: ReactNode;
 }) {
   const theme = useTheme();
+  const t = useT();
   useEffect(() => {
     if (!visible) return;
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
@@ -36,7 +38,7 @@ export function Popover({
   if (!visible) return null;
   return (
     <View style={StyleSheet.absoluteFill}>
-      <Pressable style={StyleSheet.absoluteFill} accessibilityLabel="Close" onPress={onClose} />
+      <Pressable style={StyleSheet.absoluteFill} accessibilityLabel={t('Close')} onPress={onClose} />
       <View style={[styles.card, { backgroundColor: theme.background, borderColor: theme.border }, style]}>{children}</View>
     </View>
   );

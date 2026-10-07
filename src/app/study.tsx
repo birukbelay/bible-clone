@@ -14,6 +14,7 @@ import { VerseList, VerseListHeader, type VerseListItem } from '@/components/ver
 import { VerseText } from '@/components/verse-text';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 import { settings, useSetting } from '@/settings';
 
 type Tab = 'words' | 'xrefs';
@@ -22,6 +23,7 @@ export default function StudyScreen() {
   const { ari: param } = useLocalSearchParams<{ ari: string }>();
   const ari = Number(param);
   const theme = useTheme();
+  const t = useT();
   const version = useCurrentVersion();
   const versionId = version?.id ?? '';
   const [fontSize] = useSetting(settings.fontSize);
@@ -51,8 +53,8 @@ export default function StudyScreen() {
       ) : null}
       <Segmented<Tab>
         options={[
-          { value: 'words', label: `Original words${words ? ` (${words.length})` : ''}` },
-          { value: 'xrefs', label: `Cross references${xrefs ? ` (${xrefs.length})` : ''}` },
+          { value: 'words', label: `${t('Original words')}${words ? ` (${words.length})` : ''}` },
+          { value: 'xrefs', label: `${t('Cross references')}${xrefs ? ` (${xrefs.length})` : ''}` },
         ]}
         value={tab}
         onChange={setTab}
@@ -68,7 +70,7 @@ export default function StudyScreen() {
           items={xrefs}
           header={header}
           bottomInset={Spacing.five}
-          empty={<Empty title="No cross references for this verse" />}
+          empty={<Empty title={t('No cross references for this verse')} />}
         />
       ) : (
         <FlatList
@@ -78,7 +80,7 @@ export default function StudyScreen() {
           style={{ backgroundColor: theme.background }}
           contentContainerStyle={{ paddingBottom: Spacing.five }}
           ListHeaderComponent={header}
-          ListEmptyComponent={words ? <Empty title="No Strong's words indexed for this verse" /> : null}
+          ListEmptyComponent={words ? <Empty title={t("No Strong's words indexed for this verse")} /> : null}
           renderItem={({ item }) => (
             <Row
               title={
@@ -104,7 +106,7 @@ export default function StudyScreen() {
                   )}
                   <IconButton
                     icon={Icons.topic}
-                    label={`Add ${item.number} to a topic`}
+                    label={t('Add {number} to a topic', { number: item.number })}
                     color={theme.tint}
                     onPress={() => router.push({ pathname: '/topic-picker', params: { strongs: item.number } })}
                   />

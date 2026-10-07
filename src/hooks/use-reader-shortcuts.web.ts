@@ -36,8 +36,19 @@ export function useReaderShortcuts({ enabled, onPrev, onNext, onToggleFullscreen
   }, [enabled]);
 }
 
+/** set once the stored full-screen setting was checked in this page load */
+let restored = false;
+
 export function useBrowserFullscreen(fullscreen: boolean, onExit: () => void) {
   const exit = useEffectEvent(onExit);
+
+  // the browser leaves full screen on a reload; the stored setting would still hide the tabs
+  useEffect(() => {
+    if (restored) return;
+    restored = true;
+    if (fullscreen && !document.fullscreenElement) exit();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only the value at page load
+  }, []);
 
   useEffect(() => {
     if (!fullscreen && document.fullscreenElement) document.exitFullscreen().catch(() => {});

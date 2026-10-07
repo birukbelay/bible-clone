@@ -9,6 +9,7 @@ import { Pressable, StyleSheet, View } from 'react-native';
 
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { t } from '@/i18n';
 
 import { ThemedText } from './themed-text';
 
@@ -57,7 +58,7 @@ export function notify(title: string, message?: string) {
 
 /** `notify` for a failed action: `promise.catch(showError('Could not save'))`. */
 export function showError(title: string) {
-  return (e: unknown) => notify(title, e instanceof Error ? e.message : String(e));
+  return (e: unknown) => notify(title, e instanceof Error ? t(e.message) : String(e));
 }
 
 /** Short note at the bottom of the page. */
@@ -77,7 +78,7 @@ export async function share(message: string) {
     }
   }
   await navigator.clipboard.writeText(message);
-  toast('Copied to the clipboard');
+  toast(t('Copied to the clipboard'));
 }
 
 export function DialogHost() {
@@ -113,7 +114,7 @@ function DialogCard({ dialog }: { dialog: Dialog }) {
   const confirmColor = dialog.destructive ? theme.danger : theme.tint;
   return (
     <View style={styles.overlay}>
-      <Pressable style={StyleSheet.absoluteFill} accessibilityLabel="Close" onPress={() => close(false)} />
+      <Pressable style={StyleSheet.absoluteFill} accessibilityLabel={t('Close')} onPress={() => close(false)} />
       <View
         role="alertdialog"
         aria-modal
@@ -136,7 +137,7 @@ function DialogCard({ dialog }: { dialog: Dialog }) {
                 (pressed || hovered) && { backgroundColor: theme.backgroundElement },
               ]}>
               <ThemedText type="smallBold" themeColor="textSecondary">
-                Cancel
+                {t('Cancel')}
               </ThemedText>
             </Pressable>
           )}
@@ -149,7 +150,7 @@ function DialogCard({ dialog }: { dialog: Dialog }) {
               (pressed || hovered) && styles.hovered,
             ]}>
             <ThemedText type="smallBold" style={styles.confirmText}>
-              {dialog.cancel ? (dialog.confirmText ?? 'OK') : 'OK'}
+              {dialog.cancel ? (dialog.confirmText ?? t('OK')) : t('OK')}
             </ThemedText>
           </Pressable>
         </View>

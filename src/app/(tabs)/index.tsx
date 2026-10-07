@@ -41,11 +41,13 @@ import { ThemedText } from '@/components/themed-text';
 import { Button, Empty, IconButton, Segmented, type Interaction } from '@/components/ui';
 import { VerseText } from '@/components/verse-text';
 import { HighlightColors, MaxContentWidth, Spacing } from '@/constants/theme';
-import { addBookmarks, removeBookmarks, setHighlight } from '@/db/actions';
+import { addBookmarks, removeBookmarks, setHighlight, setRead } from '@/db/actions';
 import { marksOf, useChapterMarks, type VerseMarks } from '@/db/annotations';
 import { requestBrowserFullscreen, useBrowserFullscreen, useDocumentTitle, useReaderShortcuts } from '@/hooks/use-reader-shortcuts';
 import { useTabBottomInset } from '@/hooks/use-tab-inset';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
+import { useDueReadings } from '@/plans';
 import { settings, useSetting } from '@/settings';
 
 const HEADER_HEIGHT = 52;
@@ -92,6 +94,7 @@ type Extras = ReturnType<typeof groupExtras>;
 
 export default function ReaderScreen() {
   const theme = useTheme();
+  const t = useT();
   const insets = useSafeAreaInsets();
   const tabBottomInset = useTabBottomInset();
   const focused = useIsFocused();
@@ -276,8 +279,8 @@ export default function ReaderScreen() {
   if (!version) {
     return (
       <View style={[styles.fill, { backgroundColor: theme.background, paddingTop: insets.top }]}>
-        <Empty title="No Bible versions installed" message="Add a version in Settings.">
-          <Button title="Manage versions" onPress={() => router.navigate('/settings')} />
+        <Empty title={t('No Bible versions installed')} message={t('Add a version in Settings.')}>
+          <Button title={t('Manage versions')} onPress={() => router.navigate('/settings')} />
         </Empty>
       </View>
     );
@@ -299,7 +302,7 @@ export default function ReaderScreen() {
 
   const toggleSplit = () => {
     if (versions.length < 2) {
-      confirm({ title: 'Split view needs two versions', message: 'Add another version in Settings.', confirmText: 'Settings' }).then((ok) => {
+      confirm({ title: t('Split view needs two versions'), message: t('Add another version in Settings.'), confirmText: t('Settings') }).then((ok) => {
         if (ok) router.navigate('/settings');
       });
       return;
@@ -324,11 +327,11 @@ export default function ReaderScreen() {
             },
           ]}>
           <View style={styles.headerSide}>
-            <IconButton icon={Icons.menu} label="Books and chapters" size={26} onPress={() => setDrawer(true)} />
+            <IconButton icon={Icons.menu} label={t('Books and chapters')} size={26} onPress={() => setDrawer(true)} />
           </View>
           <Pressable
             onPress={() => router.push('/version-picker')}
-            accessibilityLabel="Change version"
+            accessibilityLabel={t('Change version')}
             style={({ pressed, hovered }: Interaction) => [
               styles.tab,
               { backgroundColor: theme.tint },
@@ -339,19 +342,19 @@ export default function ReaderScreen() {
               {split && side ? `${version.shortName} | ${side.shortName}` : version.shortName}
             </Text>
             <Text numberOfLines={1} style={styles.tabPassage}>
-              {bookTitle} · Ch.{chapter}
+              {bookTitle} · {t('Ch.{chapter}', { chapter })}
             </Text>
           </Pressable>
           <View style={[styles.headerSide, styles.headerActions]}>
-            <IconButton icon={Icons.search} label="Search" color={theme.textSecondary} onPress={() => router.navigate('/search')} />
+            <IconButton icon={Icons.search} label={t('Search')} color={theme.textSecondary} onPress={() => router.navigate('/search')} />
             <IconButton
               icon={splitOn ? Icons.splitOn : Icons.split}
-              label={splitOn ? 'Single version' : 'Show two versions side by side'}
+              label={splitOn ? t('Single version') : t('Show two versions side by side')}
               color={splitOn ? theme.tint : theme.textSecondary}
               onPress={toggleSplit}
             />
-            <IconButton icon={Icons.fullscreen} label="Full screen" color={theme.textSecondary} onPress={enterFullscreen} />
-            <IconButton icon={Icons.moreVertical} label="More" color={theme.textSecondary} onPress={() => setMenu('more')} />
+            <IconButton icon={Icons.fullscreen} label={t('Full screen')} color={theme.textSecondary} onPress={enterFullscreen} />
+            <IconButton icon={Icons.moreVertical} label={t('More')} color={theme.textSecondary} onPress={() => setMenu('more')} />
           </View>
         </View>
       )}
@@ -376,10 +379,11 @@ export default function ReaderScreen() {
           onMomentumScrollEnd={onScrollEnd}
           onScrollEndDrag={onScrollEnd}>
           {error ? (
-            <Empty title="Could not load this chapter" message={error.message} />
+            <Empty title={t('Could not load this chapter')} message={error.message} />
           ) : data && !units.length ? (
-            <Empty title="This chapter is not in this version" />
+            <Empty title={t('This chapter is not in this version')} />
           ) : null}
+          {!fullscreen && <PlanBanner chapterAri={chapterAri} />}
           {data &&
             units.map((u) => {
               const unitMarks = marksOf(marks, u.ari, u.ariEnd);
@@ -517,8 +521,8 @@ function Column({
   const theme = useTheme();
   return verses.map((v) => (
     <View key={v.ari}>
-      {extras.titles.get(v.ari)?.map((t, i) => (
-        <VerseText key={i} text={t} fontSize={fontSize - 2} style={[styles.heading, { color: theme.textSecondary }]} />
+      {extras.titles.get(v.ari)?.map((title, i) => (
+        <VerseText key={i} text={title} fontSize={fontSize - 2} style={[styles.heading, { color: theme.textSecondary }]} />
       ))}
       <VerseText
         text={v.text}
@@ -529,13 +533,48 @@ function Column({
         showStrongs={showStrongs}
         onStrongPress={(n) => router.push({ pathname: '/strongs/[number]', params: { number: n } })}
       />
-      {extras.footnotes.get(v.ari)?.map((t, i) => (
+      {extras.footnotes.get(v.ari)?.map((note, i) => (
         <ThemedText key={i} type="small" themeColor="textSecondary" style={styles.footnote}>
-          {plainText(t)}
+          {plainText(note)}
         </ThemedText>
       ))}
     </View>
   ));
+}
+
+/** Today's reading of the active plans (and any missed ones), above the chapter. */
+function PlanBanner({ chapterAri }: { chapterAri: number }) {
+  const theme = useTheme();
+  const t = useT();
+  const due = useDueReadings();
+  const [hidden, setHidden] = useState<string | null>(null);
+  const first = due?.[0];
+  // hidden until there is a different reading to show
+  if (!first || hidden === first.id) return null;
+  const here = isSameChapter(first.ari, chapterAri);
+  return (
+    <View style={[styles.planBanner, { backgroundColor: theme.tintSoft }]}>
+      <Pressable
+        onPress={() => router.push({ pathname: '/plan/[id]', params: { id: first.planId } })}
+        style={({ pressed }: Interaction) => [styles.planText, pressed && styles.pressed]}>
+        <ThemedText type="small" themeColor={first.late ? 'danger' : 'tint'} numberOfLines={1}>
+          {first.late ? t('Missed reading') : t("Today's reading")} · {first.planName}
+        </ThemedText>
+        <ThemedText type="smallBold" numberOfLines={1}>
+          {first.label}
+          {due.length > 1 ? `  ${t('+{count} more', { count: due.length - 1 })}` : ''}
+        </ThemedText>
+      </Pressable>
+      {!here && <IconButton icon={Icons.open} label={t('Read {passage}', { passage: first.label })} color={theme.tint} onPress={() => settings.position.set(first.ari)} />}
+      <IconButton
+        icon={Icons.checkCircle}
+        label={t('Mark as read')}
+        color={theme.tint}
+        onPress={() => setRead(first.record, true).catch(showError(t('Could not save')))}
+      />
+      <IconButton icon={Icons.close} label={t('Hide')} size={18} color={theme.textSecondary} onPress={() => setHidden(first.id)} />
+    </View>
+  );
 }
 
 function Marks({ marks }: { marks: VerseMarks }) {
@@ -576,6 +615,7 @@ function SplitDivider({
   onRatio: (ratio: number) => void;
 }) {
   const theme = useTheme();
+  const t = useT();
   const drag = useSharedValue(0);
   const min = usable * 0.25 - leftWidth;
   const max = usable * 0.75 - leftWidth;
@@ -593,7 +633,7 @@ function SplitDivider({
 
   const label = (version: BibleVersion, color: string, top: number, slot?: 'split') => (
     <Pressable
-      accessibilityLabel={`Change ${version.shortName}`}
+      accessibilityLabel={t('Change {name}', { name: version.shortName })}
       onPress={() => router.push({ pathname: '/version-picker', params: slot ? { slot } : {} })}
       style={[styles.sideLabel, { top: top + LABEL_LENGTH / 2 - 12 }]}>
       <View style={[styles.sideLabelChip, { backgroundColor: theme.background, borderColor: theme.border }]}>
@@ -611,7 +651,7 @@ function SplitDivider({
       {label(left, theme.tint, Spacing.three)}
       {label(right, theme.splitTint, Spacing.three + LABEL_LENGTH + Spacing.two, 'split')}
       <GestureDetector gesture={pan}>
-        <View style={[styles.handleArea, { top: height / 2 - 40 }]} accessibilityLabel="Drag to resize columns">
+        <View style={[styles.handleArea, { top: height / 2 - 40 }]} accessibilityLabel={t('Drag to resize columns')}>
           <View style={[styles.handle, { backgroundColor: theme.background, borderColor: theme.textSecondary }]} />
         </View>
       </GestureDetector>
@@ -623,72 +663,82 @@ const LABEL_LENGTH = 120;
 
 function ReadingOptions({ canSplit }: { canSplit: boolean }) {
   const theme = useTheme();
+  const t = useT();
   const [fontSize, setFontSize] = useSetting(settings.fontSize);
   const [redLetters, setRedLetters] = useSetting(settings.redLetters);
   const [showStrongs, setShowStrongs] = useSetting(settings.showStrongs);
   const [split, setSplit] = useSetting(settings.split);
   const [speed, setSpeed] = useSetting(settings.scrollSpeed);
   const [appTheme, setAppTheme] = useSetting(settings.theme);
-  const stepper = (value: string, onLess: (() => void) | null, onMore: (() => void) | null, what: string) => (
+  const stepper = (value: string, onLess: (() => void) | null, onMore: (() => void) | null, less: string, more: string) => (
     <View style={styles.stepper}>
-      <IconButton icon={Icons.textSmaller} label={`Less ${what}`} color={theme.tint} disabled={!onLess} onPress={() => onLess?.()} />
+      <IconButton icon={Icons.textSmaller} label={less} color={theme.tint} disabled={!onLess} onPress={() => onLess?.()} />
       <ThemedText style={styles.stepperValue}>{value}</ThemedText>
-      <IconButton icon={Icons.textLarger} label={`More ${what}`} color={theme.tint} disabled={!onMore} onPress={() => onMore?.()} />
+      <IconButton icon={Icons.textLarger} label={more} color={theme.tint} disabled={!onMore} onPress={() => onMore?.()} />
     </View>
   );
   return (
     <>
       <MenuItem
-        label="Text size"
-        right={stepper(String(fontSize), fontSize > 12 ? () => setFontSize(fontSize - 1) : null, fontSize < 34 ? () => setFontSize(fontSize + 1) : null, 'text size')}
+        label={t('Text size')}
+        right={stepper(
+          String(fontSize),
+          fontSize > 12 ? () => setFontSize(fontSize - 1) : null,
+          fontSize < 34 ? () => setFontSize(fontSize + 1) : null,
+          t('Smaller text'),
+          t('Larger text'),
+        )}
       />
       <MenuItem
-        label="Scroll speed"
+        label={t('Scroll speed')}
         right={stepper(
           `${speed}×`,
           speed > 0.25 ? () => setSpeed(Math.round((speed - 0.25) * 100) / 100) : null,
           speed < 4 ? () => setSpeed(Math.round((speed + 0.25) * 100) / 100) : null,
-          'scroll speed',
+          t('Slower'),
+          t('Faster'),
         )}
       />
       <View style={styles.themeRow}>
         <Segmented
           options={[
-            { value: 'system', label: 'System' },
-            { value: 'light', label: 'Light' },
-            { value: 'dark', label: 'Dark' },
+            { value: 'system', label: t('System') },
+            { value: 'light', label: t('Light') },
+            { value: 'dark', label: t('Dark') },
           ]}
           value={appTheme}
           onChange={setAppTheme}
         />
       </View>
-      <MenuItem label="Words of Jesus in red" right={<Switch value={redLetters} onValueChange={setRedLetters} />} />
-      <MenuItem label="Strong's numbers" right={<Switch value={showStrongs} onValueChange={setShowStrongs} />} />
-      {canSplit && <MenuItem label="Two versions side by side" right={<Switch value={split} onValueChange={setSplit} />} />}
+      <MenuItem label={t('Words of Jesus in red')} right={<Switch value={redLetters} onValueChange={setRedLetters} />} />
+      <MenuItem label={t("Strong's numbers")} right={<Switch value={showStrongs} onValueChange={setShowStrongs} />} />
+      {canSplit && <MenuItem label={t('Two versions side by side')} right={<Switch value={split} onValueChange={setSplit} />} />}
     </>
   );
 }
 
 function MoreMenu({ split, onClose, onFullscreen }: { split: boolean; onClose: () => void; onFullscreen: () => void }) {
+  const t = useT();
   const open = (fn: () => void) => () => {
     onClose();
     fn();
   };
   return (
     <>
-      <MenuItem icon={Icons.goTo} label="Go to passage…" onPress={open(() => router.push('/passage'))} />
-      <MenuItem icon={Icons.fullscreen} label="Full screen" onPress={open(onFullscreen)} />
-      <MenuItem icon={Icons.translate} label="Change version" onPress={open(() => router.push('/version-picker'))} />
+      <MenuItem icon={Icons.goTo} label={t('Go to passage…')} onPress={open(() => router.push('/passage'))} />
+      <MenuItem icon={Icons.fullscreen} label={t('Full screen')} onPress={open(onFullscreen)} />
+      <MenuItem icon={Icons.translate} label={t('Change version')} onPress={open(() => router.push('/version-picker'))} />
       {split && (
         <MenuItem
           icon={Icons.split}
-          label="Change second version"
+          label={t('Change second version')}
           onPress={open(() => router.push({ pathname: '/version-picker', params: { slot: 'split' } }))}
         />
       )}
-      <MenuItem icon={Icons.library} label="Bookmarks & notes" onPress={open(() => router.navigate('/library'))} />
-      <MenuItem icon={Icons.topic} label="Topics" onPress={open(() => router.navigate('/topics'))} />
-      <MenuItem icon={Icons.settings} label="Settings" onPress={open(() => router.navigate('/settings'))} />
+      <MenuItem icon={Icons.plan} label={t('Reading plans')} onPress={open(() => router.push('/plans'))} />
+      <MenuItem icon={Icons.library} label={t('Bookmarks & notes')} onPress={open(() => router.navigate('/library'))} />
+      <MenuItem icon={Icons.topic} label={t('Topics')} onPress={open(() => router.navigate('/topics'))} />
+      <MenuItem icon={Icons.settings} label={t('Settings')} onPress={open(() => router.navigate('/settings'))} />
     </>
   );
 }
@@ -711,6 +761,7 @@ function SelectionBar({
   onDone: () => void;
 }) {
   const theme = useTheme();
+  const t = useT();
   const single = ranges.length === 1 && ranges[0].ari === ranges[0].ariEnd;
 
   const text = async () => {
@@ -725,7 +776,7 @@ function SelectionBar({
   const run = (fn: () => Promise<unknown>, done = true) =>
     fn().then(
       () => done && onDone(),
-      showError('Something went wrong'),
+      showError(t('Something went wrong')),
     );
 
   return (
@@ -734,19 +785,19 @@ function SelectionBar({
         <ThemedText type="smallBold" numberOfLines={1} style={styles.fill}>
           {reference}
         </ThemedText>
-        <IconButton icon={Icons.close} label="Clear selection" size={18} onPress={onDone} />
+        <IconButton icon={Icons.close} label={t('Clear selection')} size={18} onPress={onDone} />
       </View>
       <View style={styles.colors}>
         {HighlightColors.map((c, i) => (
           <Pressable
             key={c}
-            accessibilityLabel={`Highlight color ${i + 1}`}
+            accessibilityLabel={t('Highlight color {number}', { number: i + 1 })}
             onPress={() => run(() => setHighlight(ranges, i))}
             style={[styles.swatch, { backgroundColor: c, borderColor: theme.border }]}
           />
         ))}
         <Pressable
-          accessibilityLabel="Remove highlight"
+          accessibilityLabel={t('Remove highlight')}
           onPress={() => run(() => setHighlight(ranges, null))}
           style={[styles.swatch, styles.swatchClear, { borderColor: theme.border }]}>
           <Icon name={Icons.close} size={14} color={theme.textSecondary} />
@@ -755,12 +806,12 @@ function SelectionBar({
       <View style={styles.actions}>
         <Action
           icon={bookmarked ? Icons.bookmarkFill : Icons.bookmark}
-          label={bookmarked ? 'Unmark' : 'Bookmark'}
+          label={bookmarked ? t('Unmark') : t('Bookmark')}
           onPress={() => run(() => (bookmarked ? removeBookmarks(ranges) : addBookmarks(ranges, versionId)))}
         />
         <Action
           icon={Icons.note}
-          label="Note"
+          label={t('Note')}
           onPress={() => {
             router.push({ pathname: '/note', params: { ranges: encodeRanges(ranges.slice(0, 1)), version: versionId } });
             onDone();
@@ -768,7 +819,7 @@ function SelectionBar({
         />
         <Action
           icon={Icons.tag}
-          label="Tag"
+          label={t('Tag')}
           onPress={() => {
             router.push({ pathname: '/tag-verses', params: { ranges: encodeRanges(ranges) } });
             onDone();
@@ -776,14 +827,14 @@ function SelectionBar({
         />
         <Action
           icon={Icons.copy}
-          label="Copy"
-          onPress={() => run(async () => Clipboard.setStringAsync(await text()).then(() => toast('Copied')))}
+          label={t('Copy')}
+          onPress={() => run(async () => Clipboard.setStringAsync(await text()).then(() => toast(t('Copied'))))}
         />
-        <Action icon={Icons.share} label="Share" onPress={() => run(async () => share(await text()))} />
+        <Action icon={Icons.share} label={t('Share')} onPress={() => run(async () => share(await text()))} />
         {single && (
           <Action
             icon={Icons.study}
-            label="Study"
+            label={t('Study')}
             onPress={() => {
               router.push({ pathname: '/study', params: { ari: String(ranges[0].ari) } });
               onDone();
@@ -855,6 +906,17 @@ const styles = StyleSheet.create({
   splitColumns: { flexDirection: 'row', gap: GUTTER },
   marks: { flexDirection: 'row', alignItems: 'center', gap: Spacing.two, paddingVertical: 2 },
   tagDot: { width: 8, height: 8, borderRadius: 4 },
+  planBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.one,
+    borderRadius: 12,
+    paddingLeft: Spacing.three,
+    paddingRight: Spacing.one,
+    paddingVertical: Spacing.two,
+    marginBottom: Spacing.three,
+  },
+  planText: { flex: 1, gap: 2 },
   footnote: { paddingHorizontal: Spacing.two, fontStyle: 'italic' },
   divider: { position: 'absolute', top: 0, width: GUTTER, alignItems: 'center', pointerEvents: 'box-none' },
   dividerLine: { position: 'absolute', top: 0, bottom: 0, left: GUTTER / 2, width: StyleSheet.hairlineWidth, pointerEvents: 'none' },

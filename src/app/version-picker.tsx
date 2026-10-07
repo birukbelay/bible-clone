@@ -6,10 +6,12 @@ import { useSplitVersion, useVersions } from '@/bible/versions';
 import { Icon, Icons } from '@/components/icon';
 import { Row } from '@/components/ui';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 import { settings, useSetting } from '@/settings';
 
 export default function VersionPickerScreen() {
   const theme = useTheme();
+  const t = useT();
   const { slot } = useLocalSearchParams<{ slot?: 'split' }>();
   const { versions } = useVersions();
   const [main, setMain] = useSetting(settings.version);
@@ -22,7 +24,7 @@ export default function VersionPickerScreen() {
         <Row
           key={v.id}
           title={v.name}
-          subtitle={[v.shortName, v.locale, v.strongs ? "Strong's tagged" : null].filter(Boolean).join(' · ')}
+          subtitle={[v.shortName, v.locale, v.strongs ? t("Strong's tagged") : null].filter(Boolean).join(' · ')}
           right={v.id === current ? <Icon name={Icons.check} color={theme.tint} /> : null}
           onPress={() => {
             choose(v.id);
@@ -31,7 +33,7 @@ export default function VersionPickerScreen() {
         />
       ))}
       <Row
-        title="Manage versions…"
+        title={t('Manage versions…')}
         left={<Icon name={Icons.download} color={theme.tint} />}
         onPress={() => {
           router.back();

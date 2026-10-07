@@ -10,6 +10,7 @@ import { getBooks, getVerseMap, useAsync, type Verse } from '@/bible/queries';
 import { useCurrentVersion } from '@/bible/versions';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 import { settings, useSetting } from '@/settings';
 
 import { ThemedText } from './themed-text';
@@ -28,6 +29,7 @@ export function VerseList({
   empty,
   emphasize,
   renderExtra,
+  renderBadges,
   onLongPress,
   bottomInset = 0,
 }: {
@@ -37,10 +39,13 @@ export function VerseList({
   emphasize?: ReadonlySet<string>;
   /** shown under the verse text (note body, tags, ...) */
   renderExtra?: (item: VerseListItem) => ReactNode;
+  /** shown next to the reference (the topic words a verse uses, ...) */
+  renderBadges?: (item: VerseListItem) => ReactNode;
   onLongPress?: (item: VerseListItem) => void;
   bottomInset?: number;
 }) {
   const theme = useTheme();
+  const t = useT();
   const version = useCurrentVersion();
   const [fontSize] = useSetting(settings.fontSize);
   const [redLetters] = useSetting(settings.redLetters);
@@ -74,7 +79,7 @@ export function VerseList({
       contentInsetAdjustmentBehavior="automatic"
       contentContainerStyle={{ paddingBottom: bottomInset }}
       ListHeaderComponent={header}
-      ListEmptyComponent={items ? <View>{empty ?? <Empty title="No verses" />}</View> : null}
+      ListEmptyComponent={items ? <View>{empty ?? <Empty title={t('No verses')} />}</View> : null}
       onEndReachedThreshold={0.6}
       onEndReached={() => items && limit < items.length && setLimit(limit + PAGE)}
       renderItem={({ item }) => {
@@ -88,9 +93,12 @@ export function VerseList({
               { borderBottomColor: theme.border },
               (pressed || hovered) && { backgroundColor: theme.backgroundElement },
             ]}>
-            <ThemedText type="smallBold" themeColor="tint">
-              {formatRef(books, item.ari, item.ariEnd)}
-            </ThemedText>
+            <View style={styles.refRow}>
+              <ThemedText type="smallBold" themeColor="tint">
+                {formatRef(books, item.ari, item.ariEnd)}
+              </ThemedText>
+              {renderBadges?.(item)}
+            </View>
             {verses == null ? null : verses.length ? (
               verses.map((v) => (
                 <VerseText
@@ -104,7 +112,7 @@ export function VerseList({
               ))
             ) : (
               <ThemedText type="small" themeColor="textSecondary">
-                Not in {version?.shortName ?? 'this version'}
+                {t('Not in {version}', { version: version?.shortName ?? t('this version') })}
               </ThemedText>
             )}
             {renderExtra?.(item)}
@@ -134,5 +142,6 @@ const styles = StyleSheet.create({
     gap: Spacing.one,
     borderBottomWidth: StyleSheet.hairlineWidth,
   },
+  refRow: { flexDirection: 'row', flexWrap: 'wrap', alignItems: 'center', gap: Spacing.one + 2 },
   header: { paddingHorizontal: Spacing.three, paddingVertical: Spacing.three, gap: Spacing.three },
 });

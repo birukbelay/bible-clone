@@ -24,6 +24,8 @@ export type StrongVerse = {
   words: number;
   /** total tagged occurrences of the requested numbers */
   hits: number;
+  /** the requested numbers found in the verse, comma separated ("G4678,H2451") */
+  strongs: string;
 };
 
 export type CrossReference = { ari: number; ariEnd: number; weight: number };
@@ -61,11 +63,12 @@ export async function searchStrongs(query: string, limit = 50) {
     results.push(...(await getStrongs(prefix)));
   }
   if (!/^\s*[GHgh]?\s*\d+\s*$/.test(q)) {
-    const like = `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+    // lower(): the web build of SQLite compares LIKE case-sensitively
+    const like = `%${q.toLowerCase().replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
     const rows = await db.getAllAsync<StrongEntry>(
       `SELECT ${ENTRY_COLUMNS} FROM strongs
-       WHERE xlit LIKE ?1 ESCAPE '\\' OR lemma LIKE ?1 ESCAPE '\\' OR usage LIKE ?1 ESCAPE '\\'
-       ORDER BY (xlit LIKE ?2 ESCAPE '\\') DESC, verses DESC
+       WHERE lower(xlit) LIKE ?1 ESCAPE '\\' OR lower(lemma) LIKE ?1 ESCAPE '\\' OR lower(usage) LIKE ?1 ESCAPE '\\'
+       ORDER BY (lower(xlit) LIKE ?2 ESCAPE '\\') DESC, verses DESC
        LIMIT ?3`,
       like,
       `${like.slice(1)}`,
@@ -88,7 +91,7 @@ export async function versesForStrongs(numbers: string[], mode: 'any' | 'all' = 
   const marks = unique.map(() => '?').join(',');
   const having = mode === 'all' ? `HAVING count(*) = ${unique.length}` : '';
   return db.getAllAsync<StrongVerse>(
-    `SELECT ari, count(*) AS words, sum(cnt) AS hits FROM strongs_verse
+    `SELECT ari, count(*) AS words, sum(cnt) AS hits, group_concat(strong) AS strongs FROM strongs_verse
      WHERE strong IN (${marks}) GROUP BY ari ${having}
      ORDER BY words DESC, ari`,
     unique,

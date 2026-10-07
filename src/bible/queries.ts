@@ -166,7 +166,7 @@ async function scanText(versionId: string, query: string, from: number, to: numb
   while (results.length < limit) {
     const rows = await db.getAllAsync<Verse>(
       `SELECT ari, ari_end, label, text, para FROM verses
-       WHERE ari > ? AND ari <= ? AND text LIKE ? ESCAPE '\\' ORDER BY ari LIMIT 2000`,
+       WHERE ari > ? AND ari <= ? AND lower(text) LIKE ? ESCAPE '\\' ORDER BY ari LIMIT 2000`,
       after,
       to,
       like,

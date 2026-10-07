@@ -5,8 +5,13 @@
  *   <SQLite dir>/bibles/<id>.db    one file per version; the file name must match info.id
  *
  * Bundled versions are copied out of the app on first launch (and again when the asset changes
- * in an app update). More versions come from a catalog JSON (any static file host) or from a
- * .db file picked on the device - no accounts or third-party services involved.
+ * in an app update). More versions come from a catalog JSON (any static file host), a link to a
+ * .db file, or a .db file picked on the device - no accounts or third-party services involved.
+ *
+ * Versions folder (Android): when the user picks a public folder (Storage Access Framework),
+ * every version is also copied there, and Refresh loads the .db files found in it. SQLite can
+ * only open plain paths, so the app always reads its own copy in <SQLite dir>/bibles; without
+ * a folder (permission not given) the versions live in app storage only.
  */
 import { Asset } from 'expo-asset';
 import { Directory, File, Paths } from 'expo-file-system';
@@ -17,6 +22,7 @@ import {
   type SQLiteDatabase,
 } from 'expo-sqlite';
 import { useSyncExternalStore } from 'react';
+import { Platform } from 'react-native';
 
 import { settings } from '@/settings';
 
@@ -193,9 +199,10 @@ export async function refreshVersions() {
 
 /**
  * Validates a downloaded or picked .db and installs it as bibles/<info.id>.db,
- * replacing an older copy of the same version.
+ * replacing an older copy of the same version. `mirror: false` for files read from the
+ * versions folder, which are there already.
  */
-export async function installFile(source: File, expectedId?: string) {
+export async function installFile(source: File, expectedId?: string, { mirror = true } = {}) {
   const tmpName = `incoming-${Date.now()}.tmp`; // not *.db, so never listed as a version
   const tmp = new File(biblesDir(), tmpName);
   await source.copy(tmp);
@@ -224,6 +231,7 @@ export async function installFile(source: File, expectedId?: string) {
   deleteFiles(name);
   await tmp.move(new File(biblesDir(), name));
   await refreshVersions();
+  if (mirror) await mirrorToFolder([name]);
   return version;
 }
 
@@ -247,7 +255,160 @@ export async function deleteVersion(id: string) {
   const name = `${id}.db`;
   await closeFile(BIBLES_PATH, name);
   deleteFiles(name);
+  removeFromFolder(id);
   await refreshVersions();
+}
+
+// ---- versions folder (Android) ----------------------------------------------------------------
+
+/** A public folder can hold the versions on Android; iOS only grants access until the app restarts. */
+export const folderSupported = Platform.OS === 'android';
+
+/** Display name of a folder or file: content:// URIs end in an encoded "primary:Documents/Fyn Bible". */
+export function displayName(uri: string) {
+  let path = uri;
+  try {
+    path = decodeURIComponent(uri);
+  } catch {}
+  return path.replace(/[/:]+$/, '').split(/[/:]/).pop() ?? path;
+}
+
+function versionsFolder() {
+  const uri = settings.versionsFolder.get();
+  if (!folderSupported || !uri) return null;
+  const dir = new Directory(uri);
+  return dir.exists ? dir : null;
+}
+
+function folderDbFiles(dir: Directory) {
+  return dir
+    .list()
+    .filter((f): f is File => f instanceof File && displayName(f.uri).toLowerCase().endsWith('.db'));
+}
+
+function markSeen(entries: Record<string, { size: number; time: number; id: string }>) {
+  settings.versionsFolderSeen.set({ ...settings.versionsFolderSeen.get(), ...entries });
+}
+
+/** Copies installed versions (file names in bibles/) to the versions folder; failures are only logged. */
+async function mirrorToFolder(names: string[]) {
+  const dir = versionsFolder();
+  if (!dir) return;
+  const seen: Record<string, { size: number; time: number; id: string }> = {};
+  for (const name of names) {
+    try {
+      await new File(biblesDir(), name).copy(dir, { overwrite: true });
+      const copy = folderDbFiles(dir).find((f) => displayName(f.uri) === name);
+      if (copy) seen[name] = { size: copy.size, time: copy.modificationTime ?? 0, id: name.slice(0, -3) };
+    } catch (e) {
+      console.warn(`[versions] could not copy ${name} to the versions folder`, e);
+    }
+  }
+  markSeen(seen);
+}
+
+function removeFromFolder(id: string) {
+  const dir = versionsFolder();
+  if (!dir) return;
+  const seen = { ...settings.versionsFolderSeen.get() };
+  for (const file of folderDbFiles(dir)) {
+    const name = displayName(file.uri);
+    if (name !== `${id}.db` && seen[name]?.id !== id) continue;
+    try {
+      file.delete();
+      delete seen[name];
+    } catch (e) {
+      console.warn(`[versions] could not delete ${name} from the versions folder`, e);
+    }
+  }
+  settings.versionsFolderSeen.set(seen);
+}
+
+/**
+ * Asks for a folder (the system picker can also create one), copies every installed version
+ * into it and loads the .db files it already holds. Resolves null when the user cancels.
+ */
+export async function chooseVersionsFolder() {
+  if (!folderSupported) throw new Error('Not available on this device');
+  let dir: Directory;
+  try {
+    const current = settings.versionsFolder.get();
+    dir = await Directory.pickDirectoryAsync(current || undefined);
+  } catch (e) {
+    if (String((e as Error)?.message ?? e).toLowerCase().includes('cancel')) return null;
+    throw e;
+  }
+  settings.versionsFolder.set(dir.uri);
+  settings.versionsFolderSeen.set({});
+  await mirrorToFolder(state.versions.map((v) => `${v.id}.db`));
+  return refreshFromFolder();
+}
+
+/** Stops using the folder; the files in it and the installed versions are kept. */
+export function forgetVersionsFolder() {
+  settings.versionsFolder.set('');
+  settings.versionsFolderSeen.set({});
+}
+
+export type FolderRefresh = { added: string[]; updated: string[]; failed: string[] };
+
+/**
+ * Loads every new or changed .db file of the versions folder (any file name; the version id
+ * comes from the file's info table). Without a folder, only re-reads app storage.
+ */
+export async function refreshFromFolder(): Promise<FolderRefresh> {
+  const result: FolderRefresh = { added: [], updated: [], failed: [] };
+  const uri = settings.versionsFolder.get();
+  const dir = versionsFolder();
+  if (uri && !dir) throw new Error('The versions folder cannot be opened. Choose it again.');
+  if (!dir) {
+    await refreshVersions();
+    return result;
+  }
+  const seen = settings.versionsFolderSeen.get();
+  for (const file of folderDbFiles(dir)) {
+    const name = displayName(file.uri);
+    const stamp = { size: file.size, time: file.modificationTime ?? 0 };
+    const known = seen[name];
+    if (known && known.size === stamp.size && known.time === stamp.time && getVersion(known.id)) continue;
+    try {
+      const had = new Set(state.versions.map((v) => v.id));
+      const v = await installFile(file, undefined, { mirror: false });
+      (had.has(v.id) ? result.updated : result.added).push(v.name);
+      markSeen({ [name]: { ...stamp, id: v.id } });
+    } catch (e) {
+      console.warn(`[versions] could not load ${name} from the versions folder`, e);
+      result.failed.push(name);
+    }
+  }
+  await refreshVersions();
+  return result;
+}
+
+/** Downloads a .db file from any link (progress under downloads[LINK_DOWNLOAD]). */
+export const LINK_DOWNLOAD = ':link';
+
+export async function downloadFromUrl(url: string) {
+  if (!/^https?:\/\//i.test(url)) throw new Error('Enter a link starting with https://');
+  if (aborts.has(LINK_DOWNLOAD)) return;
+  const controller = new AbortController();
+  aborts.set(LINK_DOWNLOAD, controller);
+  const setProgress = (p: number) => setState({ downloads: { ...state.downloads, [LINK_DOWNLOAD]: p } });
+  setProgress(0);
+  const part = new File(Paths.cache, `link-${Date.now()}.db.part`);
+  try {
+    await File.downloadFileAsync(url, part, {
+      idempotent: true,
+      signal: controller.signal,
+      onProgress: ({ bytesWritten, totalBytes }) => setProgress(totalBytes > 0 ? Math.min(1, bytesWritten / totalBytes) : -1),
+    });
+    return await installFile(part);
+  } finally {
+    aborts.delete(LINK_DOWNLOAD);
+    const { [LINK_DOWNLOAD]: _, ...rest } = state.downloads;
+    setState({ downloads: rest });
+    if (part.exists) part.delete();
+  }
 }
 
 /** Entry of the versions catalog JSON, see docs/fyn-rn-data.md. */

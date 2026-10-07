@@ -10,10 +10,12 @@ import { ThemedText } from '@/components/themed-text';
 import { Field, SectionHeader } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 import { settings } from '@/settings';
 
 export default function PassageScreen() {
   const theme = useTheme();
+  const t = useT();
   const version = useCurrentVersion();
   const versionId = version?.id ?? '';
   const { data: books } = useAsync(() => getBooks(versionId), [versionId]);
@@ -31,7 +33,7 @@ export default function PassageScreen() {
       <ScrollView style={{ backgroundColor: theme.background }} contentContainerStyle={styles.content}>
         <Pressable onPress={() => setBook(null)} style={styles.back}>
           <ThemedText type="smallBold" themeColor="tint">
-            ‹ All books
+            ‹ {t('All books')}
           </ThemedText>
         </Pressable>
         <ThemedText type="subtitle" style={styles.bookTitle}>
@@ -95,14 +97,14 @@ export default function PassageScreen() {
         <Field
           value={filter}
           onChangeText={setFilter}
-          placeholder="Find a book"
+          placeholder={t('Find a book')}
           autoCorrect={false}
           returnKeyType="go"
           onSubmitEditing={() => shown?.length === 1 && pick(shown[0])}
         />
       </View>
-      {section('Old Testament', shown?.filter((b) => b.book < NT_START))}
-      {section('New Testament', shown?.filter((b) => b.book >= NT_START))}
+      {section(t('Old Testament'), shown?.filter((b) => b.book < NT_START))}
+      {section(t('New Testament'), shown?.filter((b) => b.book >= NT_START))}
     </ScrollView>
   );
 }

@@ -12,16 +12,18 @@ import { database, type Topic } from '@/db';
 import { createTopic, deleteTopic, updateTopic } from '@/db/actions';
 import { useRecord } from '@/db/hooks';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 
 export default function TopicEditScreen() {
   const { id } = useLocalSearchParams<{ id?: string }>();
+  const t = useT();
   const topic = useRecord(
     () => (id ? database.get<Topic>('topics').find(id) : null),
-    (t) => ({ name: t.name, description: t.description }),
+    (p) => ({ name: p.name, description: p.description }),
     [id],
   );
   if (id && topic === undefined) return <Loading />;
-  if (id && !topic) return <Empty title="This topic was deleted" />;
+  if (id && !topic) return <Empty title={t('This topic was deleted')} />;
   return (
     <TopicForm
       key={id ?? 'new'}
@@ -42,9 +44,10 @@ function TopicForm({
   initialDescription: string;
 }) {
   const theme = useTheme();
+  const t = useT();
   const [name, setName] = useState(initialName);
   const [description, setDescription] = useState(initialDescription);
-  const fail = (e: Error) => notify('Could not save the topic', e.message);
+  const fail = (e: Error) => notify(t('Could not save the topic'), e.message);
 
   const save = async () => {
     try {
@@ -66,9 +69,9 @@ function TopicForm({
   const remove = () =>
     record &&
     confirm({
-      title: `Delete “${record.name}”?`,
-      message: 'Only the topic is deleted; the dictionary is not changed.',
-      confirmText: 'Delete',
+      title: t('Delete “{name}”?', { name: record.name }),
+      message: t('Only the topic is deleted; the dictionary is not changed.'),
+      confirmText: t('Delete'),
       destructive: true,
     }).then((ok) => {
       if (ok) deleteTopic(record).then(() => router.dismissTo('/topics'), fail);
@@ -79,22 +82,22 @@ function TopicForm({
       style={{ backgroundColor: theme.background }}
       contentContainerStyle={styles.content}
       keyboardShouldPersistTaps="handled">
-      <Field value={name} onChangeText={setName} placeholder="Name, e.g. Wisdom" autoFocus={!record} />
+      <Field value={name} onChangeText={setName} placeholder={t('Name, e.g. Wisdom')} autoFocus={!record} />
       <Field
         value={description}
         onChangeText={setDescription}
-        placeholder="Description (optional)"
+        placeholder={t('Description (optional)')}
         multiline
         textAlignVertical="top"
         style={styles.description}
       />
       {!record && (
         <ThemedText type="small" themeColor="textSecondary">
-          Next you choose the Hebrew and Greek words (Strong&apos;s numbers) that make up this topic.
+          {t("Next you choose the Hebrew and Greek words (Strong's numbers) that make up this topic.")}
         </ThemedText>
       )}
-      <Button title={record ? 'Save' : 'Create and add words'} icon={Icons.check} disabled={!name.trim()} onPress={save} />
-      {record && <Button kind="danger" title="Delete topic" icon={Icons.trash} onPress={remove} />}
+      <Button title={record ? t('Save') : t('Create and add words')} icon={Icons.check} disabled={!name.trim()} onPress={save} />
+      {record && <Button kind="danger" title={t('Delete topic')} icon={Icons.trash} onPress={remove} />}
     </ScrollView>
   );
 }

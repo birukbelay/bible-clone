@@ -15,9 +15,11 @@ import { deleteRecord } from '@/db/actions';
 import { useQuery } from '@/db/hooks';
 import { useTabBottomInset } from '@/hooks/use-tab-inset';
 import { useTheme } from '@/hooks/use-theme';
+import { t as translate, useT } from '@/i18n';
 
 type Section = 'bookmarks' | 'notes' | 'highlights' | 'tags';
 
+/** English keys, translated with t() */
 const SECTIONS: { value: Section; label: string }[] = [
   { value: 'bookmarks', label: 'Bookmarks' },
   { value: 'notes', label: 'Notes' },
@@ -27,6 +29,7 @@ const SECTIONS: { value: Section; label: string }[] = [
 
 export default function LibraryScreen() {
   const theme = useTheme();
+  const t = useT();
   // the reader's drawer opens this tab on a given section
   const { section: requested } = useLocalSearchParams<{ section?: Section }>();
   const [section, setSection] = useState<Section>(requested ?? 'bookmarks');
@@ -38,7 +41,7 @@ export default function LibraryScreen() {
   const bottomInset = useTabBottomInset();
   const header = (
     <VerseListHeader>
-      <Segmented options={SECTIONS} value={section} onChange={setSection} />
+      <Segmented options={SECTIONS.map((s) => ({ value: s.value, label: t(s.label) }))} value={section} onChange={setSection} />
     </VerseListHeader>
   );
   return (
@@ -47,7 +50,7 @@ export default function LibraryScreen() {
         options={{
           headerRight:
             section === 'tags'
-              ? () => <IconButton icon={Icons.add} label="New tag" color={theme.tint} onPress={() => router.push('/tag-edit')} />
+              ? () => <IconButton icon={Icons.add} label={t('New tag')} color={theme.tint} onPress={() => router.push('/tag-edit')} />
               : undefined,
         }}
       />
@@ -63,13 +66,15 @@ type SectionProps = { header: ReactElement; bottomInset: number };
 
 const recentFirst = Q.sortBy('created_at', Q.desc);
 
-function confirmDelete(what: string, onDelete: () => void) {
-  confirm({ title: `Delete ${what}?`, confirmText: 'Delete', destructive: true }).then((ok) => {
+/** `title`: already translated */
+function confirmDelete(title: string, onDelete: () => void) {
+  confirm({ title, confirmText: translate('Delete'), destructive: true }).then((ok) => {
     if (ok) onDelete();
   });
 }
 
 function Bookmarks({ header, bottomInset }: SectionProps) {
+  const t = useT();
   const records = useQuery(() => database.get<Bookmark>('bookmarks').query(recentFirst), [], ['title']);
   const byKey = new Map(records?.map((r) => [r.id, r]));
   const items = records?.map<VerseListItem & { title: string | null }>((r) => ({ key: r.id, ari: r.ari, ariEnd: r.ariEnd, title: r.title }));
@@ -79,7 +84,7 @@ function Bookmarks({ header, bottomInset }: SectionProps) {
       items={items}
       header={header}
       bottomInset={bottomInset}
-      empty={<Empty title="No bookmarks" message="Select verses in the reader and tap Bookmark." />}
+      empty={<Empty title={t('No bookmarks')} message={t('Select verses in the reader and tap Bookmark.')} />}
       renderExtra={(item) =>
         titles.get(item.key) ? (
           <ThemedText type="small" themeColor="textSecondary">
@@ -89,7 +94,7 @@ function Bookmarks({ header, bottomInset }: SectionProps) {
       }
       onLongPress={(item) => {
         const record = byKey.get(item.key);
-        if (record) confirmDelete('this bookmark', () => deleteRecord(record));
+        if (record) confirmDelete(t('Delete this bookmark?'), () => deleteRecord(record));
       }}
     />
   );
@@ -97,6 +102,7 @@ function Bookmarks({ header, bottomInset }: SectionProps) {
 
 function Notes({ header, bottomInset }: SectionProps) {
   const theme = useTheme();
+  const t = useT();
   const records = useQuery(() => database.get<Note>('notes').query(Q.sortBy('updated_at', Q.desc)), [], ['body']);
   const bodies = new Map(records?.map((r) => [r.id, r.body]));
   const items = records?.map<VerseListItem>((r) => ({ key: r.id, ari: r.ari, ariEnd: r.ariEnd }));
@@ -105,7 +111,7 @@ function Notes({ header, bottomInset }: SectionProps) {
       items={items}
       header={header}
       bottomInset={bottomInset}
-      empty={<Empty title="No notes" message="Select a verse in the reader and tap Note." />}
+      empty={<Empty title={t('No notes')} message={t('Select a verse in the reader and tap Note.')} />}
       renderExtra={(item) => (
         <View style={[styles.note, { borderLeftColor: theme.tint }]}>
           <ThemedText type="small" numberOfLines={6} style={styles.noteText}>
@@ -115,7 +121,7 @@ function Notes({ header, bottomInset }: SectionProps) {
             icon={Icons.note}
             size={18}
             color={theme.tint}
-            label="Edit note"
+            label={t('Edit note')}
             onPress={() => router.push({ pathname: '/note', params: { id: item.key } })}
           />
         </View>
@@ -126,6 +132,7 @@ function Notes({ header, bottomInset }: SectionProps) {
 }
 
 function Highlights({ header, bottomInset }: SectionProps) {
+  const t = useT();
   const records = useQuery(() => database.get<Highlight>('highlights').query(Q.sortBy('ari', Q.asc)), [], ['color']);
   const byKey = new Map(records?.map((r) => [r.id, r]));
   const colors = new Map(records?.map((r) => [r.id, r.color]));
@@ -135,13 +142,13 @@ function Highlights({ header, bottomInset }: SectionProps) {
       items={items}
       header={header}
       bottomInset={bottomInset}
-      empty={<Empty title="No highlights" message="Select verses in the reader and pick a color." />}
+      empty={<Empty title={t('No highlights')} message={t('Select verses in the reader and pick a color.')} />}
       renderExtra={(item) => (
         <View style={[styles.swatch, { backgroundColor: HighlightColors[colors.get(item.key) ?? 0] }]} />
       )}
       onLongPress={(item) => {
         const record = byKey.get(item.key);
-        if (record) confirmDelete('this highlight', () => deleteRecord(record));
+        if (record) confirmDelete(t('Delete this highlight?'), () => deleteRecord(record));
       }}
     />
   );
@@ -149,23 +156,24 @@ function Highlights({ header, bottomInset }: SectionProps) {
 
 function Tags({ header, bottomInset }: SectionProps) {
   const theme = useTheme();
+  const t = useT();
   const tags = useQuery(() => database.get<Tag>('tags').query(Q.sortBy('name', Q.asc)), [], ['name', 'color']);
   const links = useQuery(() => database.get<VerseTag>('verse_tags').query(), []);
   const counts = new Map<string, number>();
   links?.forEach((l) => counts.set(l.tagId, (counts.get(l.tagId) ?? 0) + 1));
-  const items = tags?.map((t) => ({ id: t.id, name: t.name, color: t.color, count: counts.get(t.id) ?? 0 }));
+  const items = tags?.map((tag) => ({ id: tag.id, name: tag.name, color: tag.color, count: counts.get(tag.id) ?? 0 }));
   return (
     <FlatList
       data={items}
-      keyExtractor={(t) => t.id}
+      keyExtractor={(tag) => tag.id}
       contentInsetAdjustmentBehavior="automatic"
       style={{ backgroundColor: theme.background }}
       contentContainerStyle={{ paddingBottom: bottomInset }}
       ListHeaderComponent={header}
       ListEmptyComponent={
         items ? (
-          <Empty title="No tags" message="Tags group verses by subject, e.g. Promises or Prayer.">
-            <Button title="Create a tag" icon={Icons.add} onPress={() => router.push('/tag-edit')} />
+          <Empty title={t('No tags')} message={t('Tags group verses by subject, e.g. Promises or Prayer.')}>
+            <Button title={t('Create a tag')} icon={Icons.add} onPress={() => router.push('/tag-edit')} />
           </Empty>
         ) : null
       }

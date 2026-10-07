@@ -4,6 +4,8 @@
  */
 import { Alert, Share } from 'react-native';
 
+import { t } from '@/i18n';
+
 export type ConfirmOptions = {
   title: string;
   message?: string;
@@ -13,13 +15,13 @@ export type ConfirmOptions = {
 };
 
 /** Resolves true when the user confirms. */
-export function confirm({ title, message, confirmText = 'OK', destructive }: ConfirmOptions) {
+export function confirm({ title, message, confirmText = t('OK'), destructive }: ConfirmOptions) {
   return new Promise<boolean>((resolve) =>
     Alert.alert(
       title,
       message,
       [
-        { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+        { text: t('Cancel'), style: 'cancel', onPress: () => resolve(false) },
         { text: confirmText, style: destructive ? 'destructive' : 'default', onPress: () => resolve(true) },
       ],
       { cancelable: true, onDismiss: () => resolve(false) },
@@ -33,7 +35,7 @@ export function notify(title: string, message?: string) {
 
 /** `notify` for a failed action: `promise.catch(showError('Could not save'))`. */
 export function showError(title: string) {
-  return (e: unknown) => notify(title, e instanceof Error ? e.message : String(e));
+  return (e: unknown) => notify(title, e instanceof Error ? t(e.message) : String(e));
 }
 
 /** Short note at the bottom of the page on the web; phones show their own clipboard notice. */

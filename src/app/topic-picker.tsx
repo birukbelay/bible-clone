@@ -13,9 +13,11 @@ import { database, type Topic, type TopicStrong } from '@/db';
 import { addTopicStrongs, createTopic } from '@/db/actions';
 import { useQuery } from '@/db/hooks';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 
 export default function TopicPickerScreen() {
   const theme = useTheme();
+  const t = useT();
   const { strongs: param } = useLocalSearchParams<{ strongs: string }>();
   const strongs = (param ?? '').split(',').filter(Boolean);
   const [name, setName] = useState('');
@@ -26,8 +28,8 @@ export default function TopicPickerScreen() {
     [param],
   );
   const containing = new Set(words?.map((w) => w.topicId));
-  const topics = topicRecords?.map((t) => ({ id: t.id, name: t.name }));
-  const fail = (e: Error) => notify('Could not update the topic', e.message);
+  const topics = topicRecords?.map((p) => ({ id: p.id, name: p.name }));
+  const fail = (e: Error) => notify(t('Could not update the topic'), e.message);
 
   const add = (id: string) => addTopicStrongs(id, strongs).then(() => router.back(), fail);
   const create = () => createTopic(name, strongs).then(() => router.back(), fail);
@@ -42,24 +44,24 @@ export default function TopicPickerScreen() {
           <Field
             value={name}
             onChangeText={setName}
-            placeholder="New topic"
+            placeholder={t('New topic')}
             returnKeyType="done"
             onSubmitEditing={() => name.trim() && create()}
             style={styles.input}
           />
-          <Button title="Create" icon={Icons.add} disabled={!name.trim()} onPress={create} />
+          <Button title={t('Create')} icon={Icons.add} disabled={!name.trim()} onPress={create} />
         </View>
       </View>
-      {topics?.map((t) => {
-        const has = containing.has(t.id);
+      {topics?.map((topic) => {
+        const has = containing.has(topic.id);
         return (
           <Row
-            key={t.id}
-            title={t.name}
+            key={topic.id}
+            title={topic.name}
             left={<Icon name={Icons.topic} color={theme.textSecondary} />}
             right={has ? <Icon name={Icons.check} color={theme.tint} /> : null}
-            subtitle={has ? 'Already contains this word' : undefined}
-            onPress={has ? undefined : () => add(t.id)}
+            subtitle={has ? t('Already contains this word') : undefined}
+            onPress={has ? undefined : () => add(topic.id)}
           />
         );
       })}

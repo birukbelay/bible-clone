@@ -4,11 +4,13 @@
  */
 import { Q } from '@nozbe/watermelondb';
 
+import { makeAri } from '@/bible/ari';
+import type { Book } from '@/bible/queries';
 import type { VerseRange } from '@/bible/reference';
 import { TagColors } from '@/constants/theme';
 
 import { database } from './index';
-import { Bookmark, Highlight, Note, Tag, Topic, TopicStrong, VerseTag, type TopicMode } from './models';
+import { Bookmark, Highlight, Note, Plan, PlanReading, Tag, Topic, TopicStrong, VerseTag, type TopicMode } from './models';
 
 const bookmarks = () => database.get<Bookmark>('bookmarks');
 const notes = () => database.get<Note>('notes');
@@ -17,6 +19,8 @@ const tags = () => database.get<Tag>('tags');
 const verseTags = () => database.get<VerseTag>('verse_tags');
 const topics = () => database.get<Topic>('topics');
 const topicStrongs = () => database.get<TopicStrong>('topic_strongs');
+const plans = () => database.get<Plan>('plans');
+const planReadings = () => database.get<PlanReading>('plan_readings');
 
 /** Records whose range overlaps [from, to]. */
 export const overlapping = (from: number, to: number) => [Q.where('ari', Q.lte(to)), Q.where('ari_end', Q.gte(from))];
@@ -216,4 +220,123 @@ export function addTopicStrongs(topicId: string, strongs: string[]) {
 
 export function removeTopicStrong(word: TopicStrong) {
   return database.write(() => word.markAsDeleted());
+}
+
+// ---- reading plans ----------------------------------------------------------------------------
+
+export type PlanChapter = { book: number; chapter: number };
+
+export type NewPlan = {
+  name: string;
+  /** in reading order */
+  chapters: PlanChapter[];
+  chaptersPerDay: number;
+  /** any time on day 1 */
+  startDate: number;
+  reminder: { enabled: boolean; time: string };
+};
+
+/** Local midnight of the day containing `time`. */
+export function startOfDay(time: number) {
+  const d = new Date(time);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+/** Readings of one day: runs of consecutive chapters of the same book ("Mat 1-3", "Mat 28; Mrk 1-2"). */
+function dayReadings(chapters: PlanChapter[], books: Book[]) {
+  const runs: { book: number; from: number; to: number }[] = [];
+  for (const c of chapters) {
+    const last = runs.at(-1);
+    if (last && last.book === c.book && last.to + 1 === c.chapter) last.to = c.chapter;
+    else runs.push({ book: c.book, from: c.chapter, to: c.chapter });
+  }
+  return runs.map((r) => {
+    const name = books.find((b) => b.book === r.book)?.abbr || books.find((b) => b.book === r.book)?.name || `${r.book + 1}`;
+    return {
+      label: r.from === r.to ? `${name} ${r.from}` : `${name} ${r.from}-${r.to}`,
+      ari: makeAri(r.book, r.from, 1),
+      ariEnd: makeAri(r.book, r.to, 255),
+    };
+  });
+}
+
+export function createPlan(plan: NewPlan, books: Book[]) {
+  const name = plan.name.trim();
+  if (!name) throw new Error('Plan name is empty');
+  if (!plan.chapters.length) throw new Error('The plan has no chapters');
+  const perDay = Math.max(1, Math.round(plan.chaptersPerDay));
+  return database.write(async () => {
+    const record = plans().prepareCreate((p) => {
+      p.name = name;
+      p.startDate = startOfDay(plan.startDate);
+      p.active = true;
+      p.reminderEnabled = plan.reminder.enabled;
+      p.reminderTime = plan.reminder.time;
+      p.chaptersPerDay = perDay;
+    });
+    const readings: PlanReading[] = [];
+    for (let day = 0; day * perDay < plan.chapters.length; day++) {
+      for (const r of dayReadings(plan.chapters.slice(day * perDay, (day + 1) * perDay), books)) {
+        const position = readings.length;
+        readings.push(
+          planReadings().prepareCreate((pr) => {
+            pr.planId = record.id;
+            pr.position = position;
+            pr.day = day;
+            pr.label = r.label;
+            pr.ari = r.ari;
+            pr.ariEnd = r.ariEnd;
+            pr.readAt = null;
+          }),
+        );
+      }
+    }
+    await database.batch(record, ...readings);
+    return record;
+  });
+}
+
+export function updatePlan(
+  plan: Plan,
+  patch: { name?: string; active?: boolean; reminderEnabled?: boolean; reminderTime?: string; startDate?: number },
+) {
+  return database.write(() =>
+    plan.update((p) => {
+      if (patch.name !== undefined) p.name = patch.name.trim() || p.name;
+      if (patch.active !== undefined) p.active = patch.active;
+      if (patch.reminderEnabled !== undefined) p.reminderEnabled = patch.reminderEnabled;
+      if (patch.reminderTime !== undefined) p.reminderTime = patch.reminderTime;
+      if (patch.startDate !== undefined) p.startDate = startOfDay(patch.startDate);
+    }),
+  );
+}
+
+export function deletePlan(plan: Plan) {
+  return database.write(async () => {
+    const readings = await plan.readings.fetch();
+    await database.batch(...readings.map((r) => r.prepareMarkAsDeleted()), plan.prepareMarkAsDeleted());
+  });
+}
+
+/** Marks a reading as read on `readAt` (ms), or not read (null). */
+export function setReadOn(reading: PlanReading, readAt: number | null) {
+  return database.write(() => reading.update((r) => (r.readAt = readAt)));
+}
+
+/** Marks a reading read now, or not read. */
+export function setRead(reading: PlanReading, read: boolean) {
+  return setReadOn(reading, read ? Date.now() : null);
+}
+
+/** Marks every reading of the list as read now (or not read). */
+export function setReadAll(readings: PlanReading[], read: boolean) {
+  const now = Date.now();
+  return database.write(() =>
+    database.batch(
+      ...readings
+        .filter((r) => (r.readAt != null) !== read)
+        .map((r) => r.prepareUpdate((x) => (x.readAt = read ? now : null))),
+    ),
+  );
 }

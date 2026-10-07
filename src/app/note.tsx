@@ -19,9 +19,11 @@ import { database, type Note } from '@/db';
 import { deleteRecord, saveNote } from '@/db/actions';
 import { useRecord } from '@/db/hooks';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 
 export default function NoteScreen() {
   const params = useLocalSearchParams<{ id?: string; ranges?: string; version?: string }>();
+  const t = useT();
   const note = useRecord(
     () => (params.id ? database.get<Note>('notes').find(params.id) : null),
     (n) => ({ ari: n.ari, ariEnd: n.ariEnd, body: n.body }),
@@ -29,10 +31,10 @@ export default function NoteScreen() {
   );
 
   if (params.id && note === undefined) return <Loading />;
-  if (params.id && !note) return <Empty title="This note was deleted" />;
+  if (params.id && !note) return <Empty title={t('This note was deleted')} />;
 
   const range = note ? { ari: note.ari, ariEnd: note.ariEnd } : decodeRanges(params.ranges)[0];
-  if (!range) return <Empty title="No verse selected" />;
+  if (!range) return <Empty title={t('No verse selected')} />;
 
   return (
     <NoteEditor
@@ -58,6 +60,7 @@ function NoteEditor({
 }) {
   const theme = useTheme();
   const version = useCurrentVersion();
+  const t = useT();
   const currentId = version?.id ?? '';
   const [body, setBody] = useState(initialBody);
   const [saving, setSaving] = useState(false);
@@ -70,14 +73,14 @@ function NoteEditor({
       () => router.back(),
       (e: Error) => {
         setSaving(false);
-        notify('Could not save', e.message);
+        notify(t('Could not save'), e.message);
       },
     );
   };
 
   const remove = () =>
     record &&
-    confirm({ title: 'Delete this note?', confirmText: 'Delete', destructive: true }).then(
+    confirm({ title: t('Delete this note?'), confirmText: t('Delete'), destructive: true }).then(
       (ok) => {
         if (ok) deleteRecord(record).then(() => router.back());
       },
@@ -89,7 +92,7 @@ function NoteEditor({
         options={{
           title: formatRef(books, range.ari, range.ariEnd),
           headerRight: record
-            ? () => <IconButton icon={Icons.trash} label="Delete note" color={theme.danger} onPress={remove} />
+            ? () => <IconButton icon={Icons.trash} label={t('Delete note')} color={theme.danger} onPress={remove} />
             : undefined,
         }}
       />
@@ -108,13 +111,13 @@ function NoteEditor({
         <Field
           value={body}
           onChangeText={setBody}
-          placeholder="Write a note…"
+          placeholder={t('Write a note…')}
           multiline
           autoFocus={!record}
           textAlignVertical="top"
           style={styles.input}
         />
-        <Button title={saving ? 'Saving…' : 'Save'} icon={Icons.check} disabled={saving || body === initialBody} onPress={save} />
+        <Button title={saving ? t('Saving…') : t('Save')} icon={Icons.check} disabled={saving || body === initialBody} onPress={save} />
       </ScrollView>
     </>
   );

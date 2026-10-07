@@ -11,8 +11,10 @@ import { DialogHost } from '@/components/dialogs';
 import { ThemedText } from '@/components/themed-text';
 import { Button } from '@/components/ui';
 import { Spacing } from '@/constants/theme';
-import { database } from '@/db';
+import { database, type Plan } from '@/db';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { useLanguage, useT } from '@/i18n';
+import { setupReminders, syncReminders } from '@/reminders';
 import { settings, useSetting } from '@/settings';
 
 SplashScreen.preventAutoHideAsync();
@@ -34,7 +36,10 @@ const sheet = {
   webModalStyle: { width: 560, minWidth: 360, height: '80%', minHeight: 420 },
 };
 
+setupReminders();
+
 export default function RootLayout() {
+  const t = useT();
   const [theme] = useSetting(settings.theme);
   useEffect(() => applyTheme(theme), [theme]);
   const colorScheme = useColorScheme();
@@ -58,6 +63,17 @@ export default function RootLayout() {
     if (state !== 'loading') SplashScreen.hideAsync();
   }, [state]);
 
+  // reminders made in another language, or for plans changed by a restore, are rescheduled
+  const language = useLanguage();
+  useEffect(() => {
+    if (state !== 'ready') return;
+    database
+      .get<Plan>('plans')
+      .query()
+      .fetch()
+      .then(syncReminders, (e) => console.warn('[reminders] could not read the plans', e));
+  }, [state, language]);
+
   return (
     <GestureHandlerRootView style={styles.fill}>
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
@@ -66,24 +82,27 @@ export default function RootLayout() {
         {state === 'ready' ? (
           <Stack screenOptions={{ headerBackButtonDisplayMode: 'minimal' }}>
             <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-            <Stack.Screen name="strongs/[number]" options={{ title: "Strong's" }} />
-            <Stack.Screen name="study" options={{ title: 'Study' }} />
-            <Stack.Screen name="passage" options={{ ...sheet, sheetAllowedDetents: [1], title: 'Go to' }} />
-            <Stack.Screen name="version-picker" options={{ ...sheet, title: 'Version' }} />
-            <Stack.Screen name="note" options={{ ...sheet, title: 'Note' }} />
-            <Stack.Screen name="tag-verses" options={{ ...sheet, title: 'Tags' }} />
-            <Stack.Screen name="tag-edit" options={{ ...sheet, title: 'Tag' }} />
-            <Stack.Screen name="topic-edit" options={{ ...sheet, title: 'Topic' }} />
-            <Stack.Screen name="topic-picker" options={{ ...sheet, title: 'Add to topic' }} />
-            <Stack.Screen name="strongs-search" options={{ ...sheet, sheetAllowedDetents: [1], title: "Add Strong's words" }} />
+            <Stack.Screen name="strongs/[number]" options={{ title: t("Strong's") }} />
+            <Stack.Screen name="study" options={{ title: t('Study') }} />
+            <Stack.Screen name="plans" options={{ title: t('Reading plans') }} />
+            <Stack.Screen name="plan/[id]" options={{ title: t('Reading plan') }} />
+            <Stack.Screen name="plan-edit" options={{ ...sheet, sheetAllowedDetents: [1], title: t('New reading plan') }} />
+            <Stack.Screen name="passage" options={{ ...sheet, sheetAllowedDetents: [1], title: t('Go to') }} />
+            <Stack.Screen name="version-picker" options={{ ...sheet, title: t('Version') }} />
+            <Stack.Screen name="note" options={{ ...sheet, title: t('Note') }} />
+            <Stack.Screen name="tag-verses" options={{ ...sheet, title: t('Tags') }} />
+            <Stack.Screen name="tag-edit" options={{ ...sheet, title: t('Tag') }} />
+            <Stack.Screen name="topic-edit" options={{ ...sheet, title: t('Topic') }} />
+            <Stack.Screen name="topic-picker" options={{ ...sheet, title: t('Add to topic') }} />
+            <Stack.Screen name="strongs-search" options={{ ...sheet, sheetAllowedDetents: [1], title: t("Add Strong's words") }} />
           </Stack>
         ) : state === 'loading' ? null : (
           <View style={styles.error}>
-            <ThemedText type="smallBold">Could not open the Bible files</ThemedText>
+            <ThemedText type="smallBold">{t('Could not open the Bible files')}</ThemedText>
             <ThemedText type="small" themeColor="textSecondary">
               {state.message}
             </ThemedText>
-            <Button title="Try again" onPress={retry} />
+            <Button title={t('Try again')} onPress={retry} />
           </View>
         )}
         <DialogHost />

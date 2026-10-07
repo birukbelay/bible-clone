@@ -51,4 +51,12 @@ export const Icons = {
   goTo: { ios: 'book.pages', md: 'auto_stories' },
   fullscreen: { ios: 'arrow.up.left.and.arrow.down.right', md: 'fullscreen' },
   fullscreenExit: { ios: 'arrow.down.right.and.arrow.up.left', md: 'fullscreen_exit' },
+  plan: { ios: 'calendar', md: 'event_note' },
+  flame: { ios: 'flame', md: 'local_fire_department' },
+  folder: { ios: 'folder', md: 'folder' },
+  refresh: { ios: 'arrow.clockwise', md: 'refresh' },
+  bell: { ios: 'bell', md: 'notifications' },
+  language: { ios: 'globe', md: 'language' },
+  circle: { ios: 'circle', md: 'radio_button_unchecked' },
+  checkCircle: { ios: 'checkmark.circle.fill', md: 'check_circle' },
 } satisfies Record<string, IconName>;

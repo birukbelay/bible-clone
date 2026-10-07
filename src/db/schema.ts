@@ -15,8 +15,45 @@ const timestamps = [
   { name: 'updated_at', type: 'number' as const },
 ];
 
+/** Reading plans (schema version 2). Shared with migrations.ts. */
+export const planTables = [
+  tableSchema({
+    name: 'plans',
+    columns: [
+      { name: 'name', type: 'string' },
+      /** local midnight of day 1, ms */
+      { name: 'start_date', type: 'number' },
+      /** shown in the reader and reminded; finished or paused plans are inactive */
+      { name: 'active', type: 'boolean' },
+      { name: 'reminder_enabled', type: 'boolean' },
+      /** "HH:MM", local time */
+      { name: 'reminder_time', type: 'string' },
+      { name: 'chapters_per_day', type: 'number' },
+      ...timestamps,
+    ],
+  }),
+  tableSchema({
+    name: 'plan_readings',
+    columns: [
+      { name: 'plan_id', type: 'string', isIndexed: true },
+      /** order inside the plan */
+      { name: 'position', type: 'number' },
+      /** 0 = the start date */
+      { name: 'day', type: 'number' },
+      /** "Mat 1-3" */
+      { name: 'label', type: 'string' },
+      /** first verse of the first chapter .. last verse of the last chapter */
+      { name: 'ari', type: 'number' },
+      { name: 'ari_end', type: 'number' },
+      /** when it was read, ms; null = not read yet */
+      { name: 'read_at', type: 'number', isOptional: true },
+      ...timestamps,
+    ],
+  }),
+];
+
 export const schema = appSchema({
-  version: 1,
+  version: 2,
   tables: [
     tableSchema({
       name: 'bookmarks',
@@ -85,5 +122,6 @@ export const schema = appSchema({
         ...timestamps,
       ],
     }),
+    ...planTables,
   ],
 });

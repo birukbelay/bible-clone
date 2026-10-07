@@ -8,6 +8,7 @@ import { Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-na
 
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 import { settings, useSetting } from '@/settings';
 
 import { Icon, Icons, type IconName } from './icon';
@@ -18,6 +19,7 @@ const RAIL_MIN_WIDTH = 768;
 
 export default function AppTabs() {
   const theme = useTheme();
+  const t = useT();
   const { width } = useWindowDimensions();
   const [fullscreen] = useSetting(settings.fullscreen);
   // full screen belongs to the reader; the other tabs always keep the bar
@@ -41,19 +43,19 @@ export default function AppTabs() {
           </View>
         )}
         <TabTrigger name="index" href="/" asChild>
-          <TabButton icon={Icons.book} label="Read" rail={rail} />
+          <TabButton icon={Icons.book} label={t('Read')} rail={rail} />
         </TabTrigger>
         <TabTrigger name="topics" href="/topics" asChild>
-          <TabButton icon={Icons.topic} label="Topics" rail={rail} />
+          <TabButton icon={Icons.topic} label={t('Topics')} rail={rail} />
         </TabTrigger>
         <TabTrigger name="search" href="/search" asChild>
-          <TabButton icon={Icons.search} label="Search" rail={rail} />
+          <TabButton icon={Icons.search} label={t('Search')} rail={rail} />
         </TabTrigger>
         <TabTrigger name="library" href="/library" asChild>
-          <TabButton icon={Icons.library} label="Library" rail={rail} />
+          <TabButton icon={Icons.library} label={t('Library')} rail={rail} />
         </TabTrigger>
         <TabTrigger name="settings" href="/settings" asChild>
-          <TabButton icon={Icons.settings} label="Settings" rail={rail} />
+          <TabButton icon={Icons.settings} label={t('Settings')} rail={rail} />
         </TabTrigger>
       </TabList>
     </Tabs>

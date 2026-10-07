@@ -19,6 +19,7 @@ import { encodeRanges, formatRef } from '@/bible/reference';
 import { verseOfDay } from '@/bible/verse-of-day';
 import { Fonts, Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 import { settings } from '@/settings';
 
 import { share, showError, toast } from './dialogs';
@@ -31,17 +32,19 @@ const CHAPTER_ROW = 48;
 
 type Testament = 'ot' | 'nt';
 
+/** English keys, translated with t() */
 const TESTAMENTS: Record<Testament, { title: string; abbr: string }> = {
-  ot: { title: 'ብሉይ ኪዳን', abbr: 'ብ.ኪ' },
-  nt: { title: 'አዲስ ኪዳን', abbr: 'አ.ኪ' },
+  ot: { title: 'Old Testament', abbr: 'OT' },
+  nt: { title: 'New Testament', abbr: 'NT' },
 };
 
 const SHORTCUTS: { label: string; icon: IconName; href: Href }[] = [
-  { label: 'ፈልግ', icon: Icons.search, href: '/search' },
-  { label: 'ዕልባቶች', icon: Icons.bookmark, href: { pathname: '/library', params: { section: 'bookmarks' } } },
-  { label: 'ማስታወሻዎች', icon: Icons.note, href: { pathname: '/library', params: { section: 'notes' } } },
-  { label: 'ርዕሶች', icon: Icons.topic, href: '/topics' },
-  { label: 'ትርጉሞች', icon: Icons.translate, href: '/version-picker' },
+  { label: 'Search', icon: Icons.search, href: '/search' },
+  { label: 'Bookmarks', icon: Icons.bookmark, href: { pathname: '/library', params: { section: 'bookmarks' } } },
+  { label: 'Notes', icon: Icons.note, href: { pathname: '/library', params: { section: 'notes' } } },
+  { label: 'Topics', icon: Icons.topic, href: '/topics' },
+  { label: 'Plans', icon: Icons.plan, href: '/plans' },
+  { label: 'Versions', icon: Icons.translate, href: '/version-picker' },
 ];
 
 export function BookDrawer({
@@ -61,6 +64,7 @@ export function BookDrawer({
   position: number;
 }) {
   const theme = useTheme();
+  const t = useT();
   const { width } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   const panelWidth = Math.min(width * 0.86, 380 + insets.left);
@@ -103,7 +107,7 @@ export function BookDrawer({
     <Modal visible={mounted} transparent animationType="none" statusBarTranslucent navigationBarTranslucent onRequestClose={onClose}>
       <GestureHandlerRootView style={styles.fill}>
         <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}>
-          <Pressable style={styles.fill} accessibilityLabel="Close" onPress={onClose} />
+          <Pressable style={styles.fill} accessibilityLabel={t('Close')} onPress={onClose} />
         </Animated.View>
         <GestureDetector gesture={pan}>
           <Animated.View style={[styles.panel, { width: panelWidth, backgroundColor: theme.background }, panelStyle]}>
@@ -137,21 +141,22 @@ function DrawerContent({
   onClose: () => void;
 }) {
   const theme = useTheme();
+  const t = useT();
   const insets = useSafeAreaInsets();
   const currentBook = bookOf(position);
   const testamentOf = (book: number): Testament => (book >= NT_START ? 'nt' : 'ot');
   const [testament, setTestament] = useState(testamentOf(currentBook));
   const [browsed, setBrowsed] = useState(currentBook);
 
-  const byTestament = (t: Testament) => books.filter((b) => testamentOf(b.book) === t);
+  const byTestament = (which: Testament) => books.filter((b) => testamentOf(b.book) === which);
   const list = byTestament(testament);
   const book = list.find((b) => b.book === browsed) ?? list[0];
   const chapters = Array.from({ length: book?.chapters ?? 0 }, (_, i) => i + 1);
   const currentChapter = book?.book === currentBook ? chapterOf(position) : 0;
 
-  const switchTestament = (t: Testament) => {
-    setTestament(t);
-    setBrowsed(testamentOf(currentBook) === t ? currentBook : (byTestament(t)[0]?.book ?? 0));
+  const switchTestament = (which: Testament) => {
+    setTestament(which);
+    setBrowsed(testamentOf(currentBook) === which ? currentBook : (byTestament(which)[0]?.book ?? 0));
   };
 
   const go = (chapter: number) => {
@@ -181,7 +186,7 @@ function DrawerContent({
             ]}>
             <Icon name={s.icon} size={22} color={theme.tint} />
             <ThemedText type="small" numberOfLines={1} style={styles.shortcutLabel}>
-              {s.label}
+              {t(s.label)}
             </ThemedText>
           </Pressable>
         ))}
@@ -212,7 +217,7 @@ function DrawerContent({
                   {item.name}
                 </ThemedText>
                 <View style={[styles.pill, { borderColor: active ? theme.tint : 'transparent' }]}>
-                  <Text style={[styles.pillText, { color: active ? theme.tint : theme.textSecondary }]}>{item.chapters} ch</Text>
+                  <Text style={[styles.pillText, { color: active ? theme.tint : theme.textSecondary }]}>{t('{count} ch', { count: item.chapters })}</Text>
                 </View>
               </Pressable>
             );
@@ -231,7 +236,7 @@ function DrawerContent({
             return (
               <Pressable
                 onPress={() => go(item)}
-                accessibilityLabel={`Chapter ${item}`}
+                accessibilityLabel={t('Chapter {number}', { number: item })}
                 style={({ pressed }) => [styles.chapter, pressed && styles.pressed]}>
                 {({ hovered }: Interaction) => (
                 <View style={[styles.chapterCell, hovered && { backgroundColor: theme.backgroundSelected }, here && { backgroundColor: theme.tint }]}>
@@ -245,17 +250,17 @@ function DrawerContent({
       </View>
 
       <View style={[styles.tabs, { borderTopColor: theme.border, paddingBottom: insets.bottom, paddingLeft: insets.left }]}>
-        {(['ot', 'nt'] as const).map((t) => {
-          const selected = t === testament;
+        {(['ot', 'nt'] as const).map((which) => {
+          const selected = which === testament;
           const color = selected ? theme.tint : theme.textSecondary;
           return (
             <Pressable
-              key={t}
-              onPress={() => switchTestament(t)}
+              key={which}
+              onPress={() => switchTestament(which)}
               style={[styles.tab, { borderTopColor: selected ? theme.tint : 'transparent' }]}>
-              <Text style={[styles.tabTitle, { color }]}>{TESTAMENTS[t].title}</Text>
+              <Text style={[styles.tabTitle, { color }]}>{t(TESTAMENTS[which].title)}</Text>
               <Text style={[styles.tabSubtitle, { color }]}>
-                {TESTAMENTS[t].abbr} · {byTestament(t).length} መጻሕፍት
+                {t(TESTAMENTS[which].abbr)} · {t('{count} books', { count: byTestament(which).length })}
               </Text>
             </Pressable>
           );
@@ -276,6 +281,7 @@ function VerseOfDay({
   books: Book[];
   onClose: () => void;
 }) {
+  const t = useT();
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
   const compact = height < 500; // landscape phone
@@ -300,14 +306,14 @@ function VerseOfDay({
       <View style={styles.votdActions}>
         <VotdAction
           icon={Icons.pencil}
-          label="Note"
+          label={t('Note')}
           onPress={() => {
             onClose();
             router.push({ pathname: '/note', params: { ranges: encodeRanges([{ ari, ariEnd: ari }]), version: versionId } });
           }}
         />
-        <VotdAction icon={Icons.copy} label="Copy" onPress={() => Clipboard.setStringAsync(message).then(() => toast('Copied'))} />
-        <VotdAction icon={Icons.share} label="Share" onPress={() => share(message).catch(showError('Could not share'))} />
+        <VotdAction icon={Icons.copy} label={t('Copy')} onPress={() => Clipboard.setStringAsync(message).then(() => toast(t('Copied')))} />
+        <VotdAction icon={Icons.share} label={t('Share')} onPress={() => share(message).catch(showError(t('Could not share')))} />
       </View>
     </View>
   );

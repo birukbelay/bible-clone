@@ -74,4 +74,34 @@ export class TopicStrong extends SyncedRecord {
   @relation('topics', 'topic_id') topic!: Relation<Topic>;
 }
 
-export const modelClasses = [Bookmark, Note, Highlight, Tag, VerseTag, Topic, TopicStrong];
+/** A reading plan: chapters split into days, starting at startDate. */
+export class Plan extends SyncedRecord {
+  static table = 'plans';
+  static associations = associations(['plan_readings', { type: 'has_many', foreignKey: 'plan_id' }]);
+
+  @text('name') name!: string;
+  /** local midnight of day 1, ms */
+  @field('start_date') startDate!: number;
+  @field('active') active!: boolean;
+  @field('reminder_enabled') reminderEnabled!: boolean;
+  /** "HH:MM" */
+  @field('reminder_time') reminderTime!: string;
+  @field('chapters_per_day') chaptersPerDay!: number;
+  @children('plan_readings') readings!: Query<PlanReading>;
+}
+
+/** One reading of a plan ("Mat 1-3"), due on day `day` (0 = start date). */
+export class PlanReading extends VerseRecord {
+  static table = 'plan_readings';
+  static associations = associations(['plans', { type: 'belongs_to', key: 'plan_id' }]);
+
+  @field('plan_id') planId!: string;
+  @field('position') position!: number;
+  @field('day') day!: number;
+  @field('label') label!: string;
+  /** ms, null = not read */
+  @field('read_at') readAt!: number | null;
+  @relation('plans', 'plan_id') plan!: Relation<Plan>;
+}
+
+export const modelClasses = [Bookmark, Note, Highlight, Tag, VerseTag, Topic, TopicStrong, Plan, PlanReading];

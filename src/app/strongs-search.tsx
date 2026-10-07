@@ -19,9 +19,11 @@ import { addTopicStrongs } from '@/db/actions';
 import { useQuery } from '@/db/hooks';
 import { useDebounced } from '@/hooks/use-debounced';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 
 export default function StrongsSearchScreen() {
   const theme = useTheme();
+  const t = useT();
   const params = useLocalSearchParams<{ topicId: string; query?: string }>();
   const [query, setQuery] = useState(params.query ?? '');
   const debounced = useDebounced(query.trim(), 300);
@@ -43,7 +45,7 @@ export default function StrongsSearchScreen() {
       () => router.back(),
       (e: Error) => {
         setSaving(false);
-        notify('Could not add the words', e.message);
+        notify(t('Could not add the words'), e.message);
       },
     );
   };
@@ -54,7 +56,7 @@ export default function StrongsSearchScreen() {
         <Field
           value={query}
           onChangeText={setQuery}
-          placeholder="English word, transliteration, or G/H number"
+          placeholder={t('English word, transliteration, or G/H number')}
           autoCorrect={false}
           autoCapitalize="none"
           autoFocus={!params.query}
@@ -69,11 +71,11 @@ export default function StrongsSearchScreen() {
           loading ? (
             <Loading />
           ) : debounced ? (
-            <Empty title={`Nothing found for “${debounced}”`} />
+            <Empty title={t('Nothing found for “{query}”', { query: debounced })} />
           ) : (
             <Empty
-              title="Find the words for this topic"
-              message="Search an English word (it matches how the KJV translated each Hebrew/Greek word), a transliteration like sophia, or a number like H2451."
+              title={t('Find the words for this topic')}
+              message={t('Search an English word (it matches how the KJV translated each Hebrew/Greek word), a transliteration like sophia, or a number like H2451.')}
             />
           )
         }
@@ -93,7 +95,7 @@ export default function StrongsSearchScreen() {
                   </ThemedText>
                 </ThemedText>
               }
-              subtitle={already ? 'Already in this topic' : (item.usage ?? undefined)}
+              subtitle={already ? t('Already in this topic') : (item.usage ?? undefined)}
               detail={`${item.verses}`}
               right={
                 <Icon
@@ -109,10 +111,10 @@ export default function StrongsSearchScreen() {
       />
       <View style={[styles.footer, { borderTopColor: theme.border }]}>
         <ThemedText type="small" themeColor="textSecondary" style={styles.hint}>
-          {picked.length ? picked.join(', ') : Platform.OS === 'web' ? 'Click to select · right-click for the definition' : 'Tap to select · long-press for the definition'}
+          {picked.length ? picked.join(', ') : Platform.OS === 'web' ? t('Click to select · right-click for the definition') : t('Tap to select · long-press for the definition')}
         </ThemedText>
         <Button
-          title={picked.length ? `Add ${picked.length} word${picked.length > 1 ? 's' : ''}` : 'Add'}
+          title={picked.length ? t(picked.length > 1 ? 'Add {count} words' : 'Add {count} word', { count: picked.length }) : t('Add')}
           icon={Icons.check}
           disabled={!picked.length || saving}
           onPress={save}

@@ -15,10 +15,12 @@ import { removeTopicStrong, updateTopic } from '@/db/actions';
 import { useQuery, useRecord } from '@/db/hooks';
 import { useTabBottomInset } from '@/hooks/use-tab-inset';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 
 export default function TopicScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const theme = useTheme();
+  const t = useT();
   const bottomInset = useTabBottomInset();
 
   const topic = useRecord(
@@ -38,14 +40,29 @@ export default function TopicScreen() {
   const { data: entries } = useAsync(() => getStrongs(numbers), [numbersKey]);
   const { data: verses, loading } = useAsync(async () => {
     const found = await versesForStrongs(numbers, mode);
-    return found.map<VerseListItem>((v) => ({ key: String(v.ari), ari: v.ari, ariEnd: v.ari }));
+    // the topic's words each verse uses, shown next to its reference
+    const strongsOf = new Map(found.map((v) => [v.ari, v.strongs.split(',').filter(Boolean).sort()]));
+    const items = found.map<VerseListItem>((v) => ({ key: String(v.ari), ari: v.ari, ariEnd: v.ari }));
+    return { items, strongsOf };
   }, [numbersKey, mode]);
 
   if (topic === undefined) return <Loading />;
-  if (topic === null) return <Empty title="This topic was deleted" />;
+  if (topic === null) return <Empty title={t('This topic was deleted')} />;
 
   const emphasize = new Set(numbers);
   const entryOf = new Map(entries?.map((e) => [e.number, e]));
+
+  const badges = (item: VerseListItem) =>
+    verses?.strongsOf.get(item.ari)?.map((n) => (
+      <View key={n} style={[styles.badge, { backgroundColor: theme.backgroundSelected }]}>
+        <ThemedText type="small" style={styles.badgeText}>
+          <ThemedText type="small" style={[styles.badgeText, styles.badgeNumber, { color: theme.tint }]}>
+            {n}
+          </ThemedText>
+          {entryOf.get(n)?.xlit ? ` ${entryOf.get(n)!.xlit}` : ''}
+        </ThemedText>
+      </View>
+    ));
 
   const header = (
     <VerseListHeader>
@@ -59,13 +76,13 @@ export default function TopicScreen() {
               label={entry?.xlit ? `${w.strong} ${entry.xlit}` : w.strong}
               onPress={() => router.push({ pathname: '/strongs/[number]', params: { number: w.strong } })}
               right={
-                <IconButton icon={Icons.close} size={14} label={`Remove ${w.strong}`} color={theme.textSecondary} onPress={() => removeTopicStrong(w)} />
+                <IconButton icon={Icons.close} size={14} label={t('Remove {name}', { name: w.strong })} color={theme.textSecondary} onPress={() => removeTopicStrong(w)} />
               }
             />
           );
         })}
         <Chip
-          label="Add words"
+          label={t('Add words')}
           onPress={() => router.push({ pathname: '/strongs-search', params: { topicId: id } })}
           right={<Icon name={Icons.add} size={14} color={theme.tint} />}
         />
@@ -73,8 +90,8 @@ export default function TopicScreen() {
       {numbers.length > 1 && (
         <Segmented<TopicMode>
           options={[
-            { value: 'any', label: 'Any of the words' },
-            { value: 'all', label: 'All of the words' },
+            { value: 'any', label: t('Any of the words') },
+            { value: 'all', label: t('All of the words') },
           ]}
           value={mode}
           onChange={(m) => updateTopic(topic.record, { mode: m })}
@@ -82,7 +99,7 @@ export default function TopicScreen() {
       )}
       {numbers.length > 0 && (
         <ThemedText type="small" themeColor="textSecondary">
-          {loading ? 'Searching…' : `${verses?.length ?? 0} verses`}
+          {loading ? t('Searching…') : t('{n} verses', { n: verses?.items.length ?? 0 })}
         </ThemedText>
       )}
     </VerseListHeader>
@@ -96,7 +113,7 @@ export default function TopicScreen() {
           headerRight: () => (
             <IconButton
               icon={Icons.note}
-              label="Edit topic"
+              label={t('Edit topic')}
               color={theme.tint}
               onPress={() => router.push({ pathname: '/topic-edit', params: { id } })}
             />
@@ -104,17 +121,18 @@ export default function TopicScreen() {
         }}
       />
       <VerseList
-        items={numbers.length ? verses : []}
+        items={numbers.length ? verses?.items : []}
         header={header}
         emphasize={emphasize}
+        renderBadges={badges}
         bottomInset={bottomInset}
         empty={
           numbers.length ? (
-            <Empty title="No verses" message={mode === 'all' ? 'No verse uses all of these words. Try "Any".' : undefined} />
+            <Empty title={t('No verses')} message={mode === 'all' ? t('No verse uses all of these words. Try "Any".') : undefined} />
           ) : (
-            <Empty title="No words yet" message={'Add Strong\'s words, e.g. search "wisdom" and pick H2451 and G4678.'}>
+            <Empty title={t('No words yet')} message={t('Add Strong\'s words, e.g. search "wisdom" and pick H2451 and G4678.')}>
               <Button
-                title="Add words"
+                title={t('Add words')}
                 icon={Icons.add}
                 onPress={() => router.push({ pathname: '/strongs-search', params: { topicId: id } })}
               />
@@ -128,4 +146,7 @@ export default function TopicScreen() {
 
 const styles = StyleSheet.create({
   words: { flexDirection: 'row', flexWrap: 'wrap', gap: Spacing.two },
+  badge: { borderRadius: 6, paddingHorizontal: 6, paddingVertical: 1 },
+  badgeText: { fontSize: 12, lineHeight: 16 },
+  badgeNumber: { fontWeight: '700' },
 });

@@ -67,4 +67,15 @@ export const settings = {
   catalogUrl: createSetting('versions.catalogUrl', ''),
   /** asset hash of each bundled .db that was copied to the bibles folder */
   bundledHashes: createSetting<Record<string, string>>('versions.bundledHashes', {}),
+  /**
+   * Android: content:// URI of a folder the user picked (Documents/Fyn Bible, ...) where every
+   * version is also kept so it can be found, shared and backed up; empty = app storage only
+   */
+  versionsFolder: createSetting('versions.folder', ''),
+  /** files of the versions folder already loaded: name -> size, time and version id */
+  versionsFolderSeen: createSetting<Record<string, { size: number; time: number; id: string }>>('versions.folderSeen', {}),
+  /** language of the app's buttons and labels; 'system' follows the phone */
+  language: createSetting<'system' | 'en' | 'am'>('app.language', 'system'),
+  /** calendar of the dates in reading plans; 'auto' is Ethiopian when the app is in Amharic */
+  calendar: createSetting<'auto' | 'gregorian' | 'ethiopian'>('app.calendar', 'auto'),
 };

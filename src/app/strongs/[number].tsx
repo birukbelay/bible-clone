@@ -10,9 +10,11 @@ import { ThemedText } from '@/components/themed-text';
 import { Button, Empty, Loading } from '@/components/ui';
 import { VerseList, VerseListHeader, type VerseListItem } from '@/components/verse-list';
 import { Spacing } from '@/constants/theme';
+import { useT } from '@/i18n';
 
 export default function StrongsScreen() {
   const { number } = useLocalSearchParams<{ number: string }>();
+  const t = useT();
   const { data: entry, loading } = useAsync(() => getStrong(number), [number]);
   const { data: verses } = useAsync(async () => {
     const rows = await versesForStrongs([number]);
@@ -20,7 +22,7 @@ export default function StrongsScreen() {
   }, [number]);
 
   if (loading && !entry) return <Loading />;
-  if (!entry) return <Empty title={`${number} is not in the dictionary`} />;
+  if (!entry) return <Empty title={t('{number} is not in the dictionary', { number })} />;
 
   const { parts, translation } = parseStrongsDescription(entry.description);
   const emphasize = new Set([number]);
@@ -64,11 +66,11 @@ export default function StrongsScreen() {
       <Button
         kind="plain"
         icon={Icons.topic}
-        title="Add to a topic"
+        title={t('Add to a topic')}
         onPress={() => router.push({ pathname: '/topic-picker', params: { strongs: number } })}
       />
       <ThemedText type="small" themeColor="textSecondary">
-        {entry.occurrences} times in {entry.verses} verses
+        {t('{count} times in {verses} verses', { count: entry.occurrences, verses: entry.verses })}
       </ThemedText>
     </VerseListHeader>
   );

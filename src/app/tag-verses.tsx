@@ -16,9 +16,11 @@ import { database, type Tag, type VerseTag } from '@/db';
 import { createTag, overlapping, tagVerses, untagVerses } from '@/db/actions';
 import { useQuery } from '@/db/hooks';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 
 export default function TagVersesScreen() {
   const theme = useTheme();
+  const t = useT();
   const { ranges: param } = useLocalSearchParams<{ ranges: string }>();
   const ranges = decodeRanges(param);
   const version = useCurrentVersion();
@@ -32,18 +34,18 @@ export default function TagVersesScreen() {
     [param],
   );
 
-  if (!ranges.length) return <Empty title="No verses selected" />;
+  if (!ranges.length) return <Empty title={t('No verses selected')} />;
 
   const tagged = new Set(links?.map((l) => l.tagId));
-  const tags = tagRecords?.map((t) => ({ id: t.id, name: t.name, color: t.color }));
-  const fail = (e: Error) => notify('Could not update tags', e.message);
+  const tags = tagRecords?.map((tag) => ({ id: tag.id, name: tag.name, color: tag.color }));
+  const fail = (e: Error) => notify(t('Could not update tags'), e.message);
 
   const toggle = (id: string) => (tagged.has(id) ? untagVerses(id, ranges) : tagVerses(id, ranges)).catch(fail);
 
   const create = async () => {
     const clean = name.trim();
     if (!clean) return;
-    const existing = tags?.find((t) => t.name.toLowerCase() === clean.toLowerCase());
+    const existing = tags?.find((tag) => tag.name.toLowerCase() === clean.toLowerCase());
     try {
       const id = existing?.id ?? (await createTag(clean)).id;
       await tagVerses(id, ranges);
@@ -63,26 +65,26 @@ export default function TagVersesScreen() {
           <Field
             value={name}
             onChangeText={setName}
-            placeholder="New tag"
+            placeholder={t('New tag')}
             returnKeyType="done"
             onSubmitEditing={create}
             style={styles.input}
           />
-          <Button title="Add" icon={Icons.add} disabled={!name.trim()} onPress={create} />
+          <Button title={t('Add')} icon={Icons.add} disabled={!name.trim()} onPress={create} />
         </View>
       </View>
-      {tags?.length === 0 && <Empty title="No tags yet" message="Type a name above to create your first tag." />}
-      {tags?.map((t) => (
+      {tags?.length === 0 && <Empty title={t('No tags yet')} message={t('Type a name above to create your first tag.')} />}
+      {tags?.map((tag) => (
         <Row
-          key={t.id}
-          title={t.name}
-          left={<View style={[styles.dot, { backgroundColor: t.color }]} />}
-          right={tagged.has(t.id) ? <Icon name={Icons.check} color={theme.tint} /> : null}
-          onPress={() => toggle(t.id)}
+          key={tag.id}
+          title={tag.name}
+          left={<View style={[styles.dot, { backgroundColor: tag.color }]} />}
+          right={tagged.has(tag.id) ? <Icon name={Icons.check} color={theme.tint} /> : null}
+          onPress={() => toggle(tag.id)}
         />
       ))}
       <View style={styles.footer}>
-        <Button kind="plain" title="Done" onPress={() => router.back()} />
+        <Button kind="plain" title={t('Done')} onPress={() => router.back()} />
       </View>
     </ScrollView>
   );

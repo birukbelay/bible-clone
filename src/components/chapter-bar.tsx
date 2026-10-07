@@ -4,6 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Spacing } from '@/constants/theme';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 
 import { Icons } from './icon';
 import { IconButton, type Interaction } from './ui';
@@ -32,6 +33,7 @@ export function ChapterBar({
   onTitle: () => void;
 }) {
   const theme = useTheme();
+  const t = useT();
   const insets = useSafeAreaInsets();
   return (
     <View
@@ -45,22 +47,22 @@ export function ChapterBar({
           borderColor: theme.border,
         },
       ]}>
-      <IconButton icon={Icons.settings} label="Reading options" color={theme.textSecondary} onPress={onSettings} />
+      <IconButton icon={Icons.settings} label={t('Reading options')} color={theme.textSecondary} onPress={onSettings} />
       <IconButton
         icon={playing ? Icons.pause : Icons.play}
-        label={playing ? 'Stop scrolling' : 'Scroll automatically'}
+        label={playing ? t('Stop scrolling') : t('Scroll automatically')}
         color={playing ? theme.tint : theme.textSecondary}
         onPress={onPlay}
       />
       <View style={[styles.separator, { backgroundColor: theme.border }]} />
-      <IconButton icon={Icons.left} label="Previous chapter" size={26} disabled={!onPrev} onPress={() => onPrev?.()} />
-      <Pressable onPress={onTitle} style={({ pressed, hovered }: Interaction) => [styles.title, hovered && { backgroundColor: theme.backgroundElement }, pressed && styles.pressed]} accessibilityLabel="Books and chapters">
+      <IconButton icon={Icons.left} label={t('Previous chapter')} size={26} disabled={!onPrev} onPress={() => onPrev?.()} />
+      <Pressable onPress={onTitle} style={({ pressed, hovered }: Interaction) => [styles.title, hovered && { backgroundColor: theme.backgroundElement }, pressed && styles.pressed]} accessibilityLabel={t('Books and chapters')}>
         <Text numberOfLines={1} style={[styles.book, { color: theme.text }]}>
           {book}
         </Text>
-        <Text style={[styles.chapter, { color: theme.textSecondary }]}>Ch. {chapter}</Text>
+        <Text style={[styles.chapter, { color: theme.textSecondary }]}>{t('Ch. {chapter}', { chapter })}</Text>
       </Pressable>
-      <IconButton icon={Icons.right} label="Next chapter" size={26} disabled={!onNext} onPress={() => onNext?.()} />
+      <IconButton icon={Icons.right} label={t('Next chapter')} size={26} disabled={!onNext} onPress={() => onNext?.()} />
     </View>
   );
 }
@@ -78,11 +80,12 @@ export function ChapterArrows({
   onExit: () => void;
 }) {
   const theme = useTheme();
+  const t = useT();
   return (
     <View style={[styles.arrows, { bottom, backgroundColor: theme.background, borderColor: theme.border }]}>
-      <IconButton icon={Icons.left} label="Previous chapter" size={26} disabled={!onPrev} onPress={() => onPrev?.()} />
-      <IconButton icon={Icons.fullscreenExit} label="Exit full screen" color={theme.textSecondary} onPress={onExit} />
-      <IconButton icon={Icons.right} label="Next chapter" size={26} disabled={!onNext} onPress={() => onNext?.()} />
+      <IconButton icon={Icons.left} label={t('Previous chapter')} size={26} disabled={!onPrev} onPress={() => onPrev?.()} />
+      <IconButton icon={Icons.fullscreenExit} label={t('Exit full screen')} color={theme.textSecondary} onPress={onExit} />
+      <IconButton icon={Icons.right} label={t('Next chapter')} size={26} disabled={!onNext} onPress={() => onNext?.()} />
     </View>
   );
 }

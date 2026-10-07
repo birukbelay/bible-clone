@@ -13,6 +13,7 @@ import { Spacing } from '@/constants/theme';
 import { useDebounced } from '@/hooks/use-debounced';
 import { useTabBottomInset } from '@/hooks/use-tab-inset';
 import { useTheme } from '@/hooks/use-theme';
+import { useT } from '@/i18n';
 
 type Mode = 'text' | 'strongs';
 type Scope = 'all' | 'ot' | 'nt';
@@ -23,6 +24,7 @@ const NATIVE_SEARCH_BAR = Platform.OS !== 'web';
 
 export default function SearchScreen() {
   const theme = useTheme();
+  const t = useT();
   const bottomInset = useTabBottomInset();
   const version = useCurrentVersion();
   const [mode, setMode] = useState<Mode>('text');
@@ -42,7 +44,7 @@ export default function SearchScreen() {
     [mode, query],
   );
 
-  const placeholder = mode === 'text' ? `Search ${version?.shortName ?? ''}` : 'Word, G4678, H2451…';
+  const placeholder = mode === 'text' ? t('Search {version}', { version: version?.shortName ?? '' }) : t('Word, G4678, H2451…');
   const controls = (
     <View style={styles.controls}>
       {!NATIVE_SEARCH_BAR && (
@@ -54,13 +56,13 @@ export default function SearchScreen() {
           autoCapitalize="none"
           autoCorrect={false}
           inputMode="search"
-          aria-label="Search"
+          aria-label={t('Search')}
         />
       )}
       <Segmented<Mode>
         options={[
-          { value: 'text', label: 'Bible text' },
-          { value: 'strongs', label: "Strong's" },
+          { value: 'text', label: t('Bible text') },
+          { value: 'strongs', label: t("Strong's") },
         ]}
         value={mode}
         onChange={setMode}
@@ -68,9 +70,9 @@ export default function SearchScreen() {
       {mode === 'text' && (
         <Segmented<Scope>
           options={[
-            { value: 'all', label: 'Whole Bible' },
-            { value: 'ot', label: 'Old Testament' },
-            { value: 'nt', label: 'New Testament' },
+            { value: 'all', label: t('Whole Bible') },
+            { value: 'ot', label: t('Old Testament') },
+            { value: 'nt', label: t('New Testament') },
           ]}
           value={scope}
           onChange={setScope}
@@ -102,16 +104,16 @@ export default function SearchScreen() {
               {controls}
               {query && verses ? (
                 <ThemedText type="small" themeColor="textSecondary">
-                  {textLoading ? 'Searching…' : verses.length >= LIMIT ? `First ${LIMIT} verses` : `${verses.length} verses`}
+                  {textLoading ? t('Searching…') : verses.length >= LIMIT ? t('First {count} verses', { count: LIMIT }) : t('{count} verses', { count: verses.length })}
                 </ThemedText>
               ) : null}
             </VerseListHeader>
           }
           empty={
             query ? (
-              <Empty title="Nothing found" message={'Words match by their start ("love" finds "loved"); put a phrase in "quotes".'} />
+              <Empty title={t('Nothing found')} message={t('Words match by their start (“love” finds “loved”); put a phrase in "quotes".')} />
             ) : (
-              <Empty title="Search the Bible" message={`Type above to search ${version?.name ?? 'the current version'}.`} />
+              <Empty title={t('Search the Bible')} message={t('Type above to search {version}.', { version: version?.name ?? t('the current version') })} />
             )
           }
         />
@@ -126,9 +128,9 @@ export default function SearchScreen() {
           ListHeaderComponent={<VerseListHeader>{controls}</VerseListHeader>}
           ListEmptyComponent={
             query ? (
-              entries ? <Empty title="No Strong's entries found" /> : null
+              entries ? <Empty title={t("No Strong's entries found")} /> : null
             ) : (
-              <Empty title="Strong's dictionary" message={'Search by English meaning ("wisdom"), transliteration ("sophia") or number ("G4678").'} />
+              <Empty title={t("Strong's dictionary")} message={t('Search by English meaning (“wisdom”), transliteration (“sophia”) or number (“G4678”).')} />
             )
           }
           renderItem={({ item }) => (
