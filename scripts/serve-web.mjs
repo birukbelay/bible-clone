@@ -35,7 +35,11 @@ createServer((req, res) => {
   res.setHeader('Cross-Origin-Embedder-Policy', 'credentialless');
   res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
   res.setHeader('Content-Type', types[extname(file)] ?? 'application/octet-stream');
-  if (/^\/(_expo\/static|assets|bibles)\//.test(path) && !path.endsWith('index.json')) {
+  // if (/^\/(_expo\/static|assets|bibles)\//.test(path) && !path.endsWith('index.json')) {
+  if (path === '/coi-serviceworker.js') {
+    // Service workers must not be cached so the browser can update them.
+    res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+  } else if (/^\\/(_expo\\/static|assets|bibles)\\/ /.test(path) && !path.endsWith('index.json')) {
     res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
   }
   createReadStream(file).pipe(res);
